@@ -176,13 +176,17 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/auth/register`, {
+      const userData = {
         nombre: nombre.trim(),
         email: email.toLowerCase().trim(),
         password: password,
         moto: moto.trim(),
         color: color.trim()
-      }, {
+      };
+      
+      console.log('Enviando datos de registro:', userData);
+      
+      const response = await axios.post(`${BACKEND_URL}/auth/register`, userData, {
         timeout: 15000,
         headers: { "Content-Type": "application/json" }
       });
@@ -211,8 +215,15 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       }
     } catch (error) {
       console.error("Error en registro:", error);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
       if (error.response?.status === 409) {
         Alert.alert("Error", "Este email ya está registrado");
+      } else if (error.response?.status === 400) {
+        Alert.alert("Error", error.response.data?.message || "Datos inválidos");
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        Alert.alert("Error", "Error de conexión. Verifica que el backend esté funcionando.");
       } else {
         Alert.alert("Error", "Error de conexión. Verifica tu internet.");
       }
