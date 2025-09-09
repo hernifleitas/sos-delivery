@@ -183,10 +183,17 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
       }
     } catch (error) {
       console.error("Error en login:", error);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
       if (error.response?.status === 401) {
         Alert.alert("Error", "Email o contraseña incorrectos");
       } else if (error.response?.status === 404) {
         Alert.alert("Error", "Usuario no encontrado");
+      } else if (error.response?.status === 400) {
+        Alert.alert("Error", error.response.data?.message || "Datos inválidos");
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        Alert.alert("Error", "Error de conexión. Verifica que el backend esté funcionando.");
       } else {
         Alert.alert("Error", "Error de conexión. Verifica tu internet.");
       }

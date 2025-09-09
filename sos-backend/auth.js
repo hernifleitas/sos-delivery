@@ -45,6 +45,7 @@ class AuthService {
   // Registrar nuevo usuario
   async register(userData) {
     try {
+      console.log('Datos recibidos en authService.register:', userData);
       const { nombre, email, password, moto, color } = userData;
 
       // Verificar si el email ya existe

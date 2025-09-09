@@ -9,16 +9,21 @@ import { configurarAccesoRapido, enviarNotificacionConAcciones, manejarRespuesta
 import axios from "axios";
 import MapRidersRealtime from "./MapRidersRealtime";
 import AlertasSOS from "./AlertasSOS";
+import SplashScreen from "./SplashScreen";
+import LoginScreen from "./LoginScreen";
+import RegisterScreen from "./RegisterScreen";
+import UserNavbar from "./UserNavbar";
 
 export default function App() {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   
-  const [nombre, setNombre] = useState("");
-  const [moto, setMoto] = useState("");
-  const [color, setColor] = useState("");
-  const [registrado, setRegistrado] = useState(false);
-
+  // Estados de navegación y autenticación
+  const [currentScreen, setCurrentScreen] = useState('splash');
+  const [user, setUser] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
   const [tipoSOS, setTipoSOS] = useState(""); // "robo" o "pinchazo"
   const [contador, setContador] = useState(0);
@@ -33,41 +38,67 @@ export default function App() {
       await configurarNotificaciones();
       await configurarAccesoRapido();
       
-      const datosString = await AsyncStorage.getItem("usuario");
-      if (datosString) {
-        const datos = JSON.parse(datosString);
-        setNombre(datos.nombre);
-        setMoto(datos.moto);
-        setColor(datos.color || "");
-        setRegistrado(true);
+      // Verificar si el usuario está logueado
+      const userLoggedIn = await AsyncStorage.getItem("userLoggedIn");
+      const userData = await AsyncStorage.getItem("usuario");
+      const authToken = await AsyncStorage.getItem("authToken");
+      
+      if (userLoggedIn === "true" && userData && authToken) {
+        try {
+          // Verificar token con el backend
+          const response = await axios.get("http://192.168.1.41:10000/auth/verify", {
+            headers: { 'Authorization': `Bearer ${authToken}` },
+            timeout: 10000
+          });
+          
+          if (response.data.success) {
+            const userInfo = JSON.parse(userData);
+            setUser(userInfo);
+            setIsLoggedIn(true);
+            setCurrentScreen('main');
+          } else {
+            // Token inválido, limpiar datos
+            await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
+            setCurrentScreen('splash');
+          }
+        } catch (error) {
+          console.error('Error verificando token:', error);
+          // Error de conexión o token inválido, limpiar datos
+          await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
+          setCurrentScreen('splash');
+        }
+      } else {
+        setCurrentScreen('splash');
       }
 
-      const sos = await AsyncStorage.getItem("sosActivo");
-      const tipo = await AsyncStorage.getItem("tipoSOS");
-      if (sos === "true") {
-        setSosActivo(true);
-        setTipoSOS(tipo || "robo");
-        setContador(10);
-        // Iniciar timeout de 10s si la app se cerró antes de enviar
-        timeoutSOS.current = setTimeout(() => iniciarIntervaloSOS(), 10000);
-      }
+      // Cargar estados de SOS y tracking solo si está logueado
+      if (isLoggedIn) {
+        const sos = await AsyncStorage.getItem("sosActivo");
+        const tipo = await AsyncStorage.getItem("tipoSOS");
+        if (sos === "true") {
+          setSosActivo(true);
+          setTipoSOS(tipo || "robo");
+          setContador(10);
+          timeoutSOS.current = setTimeout(() => iniciarIntervaloSOS(), 10000);
+        }
 
-      // Verificar estado del tracking
-      const estadoTracking = await verificarEstadoTracking();
-      setTrackingActivo(estadoTracking.trackingActivo);
+        // Verificar estado del tracking
+        const estadoTracking = await verificarEstadoTracking();
+        setTrackingActivo(estadoTracking.trackingActivo);
 
-      // Si no hay SOS activo, enviar estado normal (bandera verde) al abrir la app
-      const sosActivo = await AsyncStorage.getItem("sosActivo");
-      if (sosActivo !== "true") {
-        // Pequeño delay para asegurar que la app esté completamente cargada
-        setTimeout(() => {
-          enviarEstadoNormal();
-        }, 2000);
+        // Si no hay SOS activo, enviar estado normal
+        const sosActivo = await AsyncStorage.getItem("sosActivo");
+        if (sosActivo !== "true") {
+          setTimeout(() => {
+            enviarEstadoNormal();
+          }, 2000);
+        }
+        
+        iniciarUbicacionBackground();
       }
     };
     cargarDatos();
-    iniciarUbicacionBackground();
-  }, []);
+  }, [isLoggedIn]);
 
   // Manejar cambios de estado de la app
   useEffect(() => {
@@ -116,13 +147,54 @@ export default function App() {
     }
   };
 
-  const registrar = async () => {
-    if (!nombre || !moto || !color) {
-      Alert.alert("Error", "Completa todos los campos");
-      return;
-    }
-    await AsyncStorage.setItem("usuario", JSON.stringify({ nombre, moto, color }));
-    setRegistrado(true);
+  // Funciones de navegación
+  const handleNavigate = (screen) => {
+    setCurrentScreen(screen);
+  };
+
+  const handleLoginSuccess = async (userData) => {
+    setUser(userData);
+    setIsLoggedIn(true);
+    setCurrentScreen('main');
+    
+    // Guardar datos del usuario
+    await AsyncStorage.setItem("usuario", JSON.stringify(userData));
+    await AsyncStorage.setItem("userLoggedIn", "true");
+    await AsyncStorage.setItem("authToken", userData.token);
+  };
+
+  const handleRegisterSuccess = async (userData) => {
+    setUser(userData);
+    setIsLoggedIn(true);
+    setCurrentScreen('main');
+    
+    // Guardar datos del usuario
+    await AsyncStorage.setItem("usuario", JSON.stringify(userData));
+    await AsyncStorage.setItem("userLoggedIn", "true");
+    await AsyncStorage.setItem("authToken", userData.token);
+  };
+
+  const handleLogout = async () => {
+    setUser(null);
+    setIsLoggedIn(false);
+    setCurrentScreen('splash');
+    
+    // Limpiar datos de SOS
+    setSosActivo(false);
+    setTipoSOS("");
+    setContador(0);
+    
+    // Limpiar intervalos
+    if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
+    if (intervaloSOS.current) clearInterval(intervaloSOS.current);
+    
+    // Detener tracking
+    await detenerUbicacionBackground();
+    setTrackingActivo(false);
+  };
+
+  const handleUpdateUser = (updatedUser) => {
+    setUser(updatedUser);
   };
 
   const activarSOS = async (tipo) => {
@@ -142,12 +214,12 @@ export default function App() {
     await AsyncStorage.setItem("sosActivo", "true");
     await AsyncStorage.setItem("sosInicio", Date.now().toString());
     await AsyncStorage.setItem("sosEnviado", "false");
-    await AsyncStorage.setItem("nombre", nombre);
-    await AsyncStorage.setItem("moto", moto);
-    await AsyncStorage.setItem("color", color || "No especificado");
+    await AsyncStorage.setItem("nombre", user?.nombre || "Usuario");
+    await AsyncStorage.setItem("moto", user?.moto || "No especificado");
+    await AsyncStorage.setItem("color", user?.color || "No especificado");
     await AsyncStorage.setItem("tipoSOS", tipo);
 
-    console.log(`SOS ${tipo} activado para ${nombre} (${moto}, ${color}) - RiderID: ${riderId}`);
+    console.log(`SOS ${tipo} activado para ${user?.nombre} (${user?.moto}, ${user?.color}) - RiderID: ${riderId}`);
 
     // Limpiar cualquier timeout o intervalo previo
     if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
@@ -202,12 +274,12 @@ export default function App() {
 
       const riderId = await AsyncStorage.getItem("riderId");
       const fechaHora = new Date().toISOString();
-      const colorFinal = (color || "No especificado").trim();
+      const colorFinal = (user?.color || "No especificado").trim();
 
       await axios.post("http://192.168.1.41:10000/sos", {
         riderId,
-        nombre,
-        moto,
+        nombre: user?.nombre || "Usuario",
+        moto: user?.moto || "No especificado",
         color: colorFinal,
         ubicacion: {
           lat: ubicacion.lat ?? 0,
@@ -236,13 +308,13 @@ export default function App() {
       const riderId = await AsyncStorage.getItem("riderId");
 
       const fechaHora = new Date().toISOString();
-      const colorFinal = (color || "No especificado").trim();
+      const colorFinal = (user?.color || "No especificado").trim();
       const tipo = tipoSOS || (await AsyncStorage.getItem("tipoSOS")) || "robo";
 
       await axios.post("http://192.168.1.41:10000/sos", {
         riderId,
-        nombre,
-        moto,
+        nombre: user?.nombre || "Usuario",
+        moto: user?.moto || "No especificado",
         color: colorFinal,
         ubicacion: {
           lat: ubicacion.lat ?? 0,
@@ -291,43 +363,31 @@ export default function App() {
     }
   });
 
-  if (!registrado) {
-    return (
-      <View style={dynamicStyles.container}>
-        <Text style={dynamicStyles.title}>Registro</Text>
-        <TextInput 
-          placeholder="Tu nombre" 
-          placeholderTextColor={isDarkMode ? "#888888" : "#999999"}
-          style={dynamicStyles.input} 
-          value={nombre} 
-          onChangeText={setNombre} 
-        />
-        <TextInput 
-          placeholder="Tu moto" 
-          placeholderTextColor={isDarkMode ? "#888888" : "#999999"}
-          style={dynamicStyles.input} 
-          value={moto} 
-          onChangeText={setMoto} 
-        />
-        <TextInput 
-          placeholder="Color de la moto" 
-          placeholderTextColor={isDarkMode ? "#888888" : "#999999"}
-          style={dynamicStyles.input} 
-          value={color} 
-          onChangeText={setColor} 
-        />
-        <TouchableOpacity style={styles.saveButton} onPress={registrar}>
-          <Text style={styles.saveButtonText}>Guardar</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  // Renderizar diferentes pantallas
+  if (currentScreen === 'splash') {
+    return <SplashScreen onNavigate={handleNavigate} />;
+  }
+  
+  if (currentScreen === 'login') {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
+  }
+  
+  if (currentScreen === 'register') {
+    return <RegisterScreen onRegisterSuccess={handleRegisterSuccess} onNavigate={handleNavigate} />;
   }
 
   return (
     <View style={dynamicStyles.container}>
+      {/* Navbar de usuario */}
+      <UserNavbar 
+        user={user} 
+        onLogout={handleLogout} 
+        onUpdateUser={handleUpdateUser}
+      />
+      
       {/* Barra superior fija con botones */}
       <View style={styles.topBar}>
-        <Text style={styles.welcomeText}>Hola, {nombre}</Text>
+        <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
         <View style={styles.topButtons}>
           <TouchableOpacity 
             style={[styles.topButton, { backgroundColor: trackingActivo ? "#e74c3c" : "#27ae60" }]}
@@ -396,7 +456,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1,
-    backgroundColor: "#ffffff"
+    backgroundColor: "#1a1a1a"
   },
   title: { 
     fontSize: 28, 
@@ -440,24 +500,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    backgroundColor: "rgba(26, 26, 26, 0.95)",
     borderBottomWidth: 1,
-    borderBottomColor: "#e1e8ed",
+    borderBottomColor: "#e74c3c",
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     zIndex: 1000,
-    shadowColor: "#000",
+    shadowColor: "#e74c3c",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5
   },
   welcomeText: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#2c3e50"
+    color: "#ffffff"
   },
   topButtons: {
     flexDirection: "row",

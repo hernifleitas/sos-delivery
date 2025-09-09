@@ -1,8 +1,14 @@
 const express = require("express");
 const cors = require("cors");
+const bodyParser = require("body-parser");
+require('dotenv').config();
+
+const authRoutes = require('./api/auth');
+const authService = require('./auth');
 
 const app = express();
 app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 
 // Guardar info de riders en memoria
@@ -143,5 +149,17 @@ app.get("/alertas", (req, res) => {
   res.json(alertasArray);
 });
 
-const PORT = 10000;
-app.listen(PORT, '192.168.1.41', () => console.log(`Servidor corriendo en http://192.168.1.41:${PORT}`));
+// Rutas de autenticación
+app.use('/auth', authRoutes);
+
+// Middleware para verificar autenticación en rutas protegidas
+app.use('/protected', authService.authenticateToken);
+
+const PORT = process.env.PORT || 10000;
+const HOST = process.env.HOST || '192.168.1.41';
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Servidor Rider SOS corriendo en http://${HOST}:${PORT}`);
+  console.log(`📧 Sistema de emails configurado`);
+  console.log(`🔐 Autenticación JWT activa`);
+});
