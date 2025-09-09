@@ -4,7 +4,7 @@
     "slug": "sos-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/sos.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -13,17 +13,59 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+        "NSLocationWhenInUseUsageDescription": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+        "NSLocationAlwaysUsageDescription": "Esta aplicación necesita acceso a la ubicación en segundo plano para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+        "UIBackgroundModes": ["location", "background-processing", "background-fetch"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.hernifleitas.sosapp",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d7e6ced0-06f7-423c-a6e0-1f565d36643f"
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+          "locationAlwaysPermission": "Esta aplicación necesita acceso a la ubicación en segundo plano para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+          "locationWhenInUsePermission": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#e74c3c",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
+    ]
   }
 }
