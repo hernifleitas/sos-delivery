@@ -268,6 +268,67 @@ class AuthService {
     }
   }
 
+  // Reset de contraseña
+  async resetPassword(email) {
+    try {
+      // Buscar usuario por email
+      const user = await database.findUserByEmail(email);
+      if (!user) {
+        return {
+          success: false,
+          message: 'Email no encontrado en el sistema'
+        };
+      }
+
+      // Generar nueva contraseña aleatoria
+      const newPassword = this.generateRandomPassword();
+      
+      // Hash de la nueva contraseña
+      const hashedPassword = await this.hashPassword(newPassword);
+
+      // Actualizar contraseña en la base de datos
+      const result = await database.updateUserPassword(user.id, hashedPassword);
+
+      if (result.changes === 0) {
+        return {
+          success: false,
+          message: 'Error actualizando contraseña'
+        };
+      }
+
+      // Enviar email con la nueva contraseña
+      try {
+        const emailService = require('./email');
+        await emailService.sendPasswordResetEmail(user, newPassword);
+        console.log(`Nueva contraseña enviada a ${user.email}`);
+      } catch (emailError) {
+        console.error('Error enviando email de reset:', emailError);
+        // No fallar el reset si el email falla
+      }
+
+      return {
+        success: true,
+        message: 'Nueva contraseña enviada a tu email'
+      };
+    } catch (error) {
+      console.error('Error reseteando contraseña:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
+  }
+
+  // Generar contraseña aleatoria
+  generateRandomPassword() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let password = '';
+    for (let i = 0; i < 8; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+
   // Cambiar contraseña
   async changePassword(userId, currentPassword, newPassword) {
     try {

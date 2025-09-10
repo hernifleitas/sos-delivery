@@ -114,7 +114,19 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
         `sos-${tipoSOS}-${riderId}`
       );
     } else {
-      console.log(`Actualización de ubicación enviada:`, mensajeBackend.fechaHora);
+      console.log(`Actualización de ubicación enviada (${tipoSOS}):`, mensajeBackend.fechaHora);
+      // Enviar notificación de actualización cada 5 actualizaciones para no saturar
+      const contadorActualizaciones = await AsyncStorage.getItem("contadorActualizaciones") || "0";
+      const contador = parseInt(contadorActualizaciones) + 1;
+      await AsyncStorage.setItem("contadorActualizaciones", contador.toString());
+      
+      if (contador % 5 === 0) {
+        await enviarNotificacion(
+          `📍 Actualización ${tipoSOS.toUpperCase()}`, 
+          `Ubicación actualizada. ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+          `update-${tipoSOS}-${riderId}-${contador}`
+        );
+      }
     }
   } catch (err) {
     console.error("Error enviando ubicación al backend:", err.message);
@@ -152,9 +164,13 @@ export const iniciarUbicacionBackground = async () => {
 
       if (!isTaskRegistered) {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.Balanced, // Cambiado para mejor rendimiento en background
-          distanceInterval: 50, // Aumentado para reducir consumo de batería
-          deferredUpdatesInterval: 60000, // cada 1 min en lugar de 2
+          accuracy: Location.Accuracy.High, // Más fiable para callbacks periódicos
+          // Asegurar actualizaciones periódicas incluso sin movimiento (Android)
+          timeInterval: 120000, // cada 2 minutos
+          distanceInterval: 0, // enviar aunque no haya movimiento
+          deferredUpdatesInterval: 60000, // cada 1 min
+          deferredUpdatesDistance: 0,
+          activityType: Location.ActivityType.Other,
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: "🚨 SOS Activo",

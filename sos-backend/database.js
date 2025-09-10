@@ -123,6 +123,25 @@ class Database {
     });
   }
 
+  // Actualizar contraseña de usuario
+  updateUserPassword(id, password) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE users 
+        SET password = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      
+      this.db.run(sql, [password, id], function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({ changes: this.changes });
+        }
+      });
+    });
+  }
+
   // Desactivar usuario
   deactivateUser(id) {
     return new Promise((resolve, reject) => {
