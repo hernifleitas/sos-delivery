@@ -1,5 +1,5 @@
 // LoginScreen.js
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   View, 
   Text, 
@@ -24,6 +24,22 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const savedEmail = await AsyncStorage.getItem('remember_email');
+        const savedPassword = await AsyncStorage.getItem('remember_password');
+        const rememberFlag = await AsyncStorage.getItem('remember_flag');
+        if (rememberFlag === 'true') {
+          setRemember(true);
+          if (savedEmail) setEmail(savedEmail);
+          if (savedPassword) setPassword(savedPassword);
+        }
+      } catch (e) {}
+    })();
+  }, []);
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -172,6 +188,18 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
         
         await AsyncStorage.setItem("userLoggedIn", "true");
         await AsyncStorage.setItem("userId", userData.id.toString());
+        if (response.data.token) {
+          await AsyncStorage.setItem("authToken", response.data.token);
+        }
+
+        // Recordar credenciales si está marcado
+        if (remember) {
+          await AsyncStorage.setItem('remember_flag', 'true');
+          await AsyncStorage.setItem('remember_email', email);
+          await AsyncStorage.setItem('remember_password', password);
+        } else {
+          await AsyncStorage.multiRemove(['remember_flag', 'remember_email', 'remember_password']);
+        }
         
         Alert.alert(
           "¡Bienvenido!", 
@@ -266,6 +294,16 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
             <Text style={dynamicStyles.loginButtonText}>
               {loading ? "Iniciando sesión..." : "🚀 Iniciar Sesión"}
             </Text>
+          </TouchableOpacity>
+
+          {/* Recordar contraseña */}
+          <TouchableOpacity
+            style={{ marginTop: 12, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' }}
+            onPress={() => setRemember(!remember)}
+            disabled={loading}
+          >
+            <Text style={{ fontSize: 18 }}>{remember ? '☑' : '☐'}</Text>
+            <Text style={{ marginLeft: 8, color: isDarkMode ? '#ffffff' : '#2c3e50' }}>Recordar credenciales</Text>
           </TouchableOpacity>
 
           {loading && (

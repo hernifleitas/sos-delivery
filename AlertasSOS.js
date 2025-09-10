@@ -106,7 +106,7 @@ export default function AlertasSOS() {
   const getTipoColor = (tipo) => {
     switch (tipo) {
       case 'robo': return '#e74c3c';
-      case 'pinchazo': return '#f39c12';
+      case 'accidente': return '#f39c12';
       default: return '#95a5a6';
     }
   };
@@ -114,7 +114,7 @@ export default function AlertasSOS() {
   const getTipoEmoji = (tipo) => {
     switch (tipo) {
       case 'robo': return '🚨';
-      case 'pinchazo': return '🛠️';
+      case 'accidente': return '🚑';
       default: return '⚠️';
     }
   };

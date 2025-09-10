@@ -2,6 +2,7 @@
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { iniciarUbicacionBackground } from './tasks';
 
 // Configuración de notificaciones para background
 export const configurarNotificaciones = async () => {
@@ -110,11 +111,30 @@ export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
     const moto = await AsyncStorage.getItem('moto') || 'No especificado';
     const color = await AsyncStorage.getItem('color') || 'No especificado';
     
+    // Generar riderId si no existe
+    let riderId = await AsyncStorage.getItem("riderId");
+    if (!riderId) {
+      riderId = `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await AsyncStorage.setItem("riderId", riderId);
+    }
+    
     // Activar SOS
     await AsyncStorage.setItem('sosActivo', 'true');
     await AsyncStorage.setItem('sosInicio', Date.now().toString());
     await AsyncStorage.setItem('sosEnviado', 'false');
     await AsyncStorage.setItem('tipoSOS', tipo);
+    
+    // Asegurar tracking de ubicación en segundo plano
+    try {
+      await iniciarUbicacionBackground();
+    } catch (e) {
+      console.log('No se pudo iniciar tracking en background:', e?.message || e);
+    }
+    
+    // Guardar todos los datos del usuario para el background
+    await AsyncStorage.setItem("nombre", nombre);
+    await AsyncStorage.setItem("moto", moto);
+    await AsyncStorage.setItem("color", color);
     
     // Enviar notificación de confirmación
     await enviarNotificacionEstado(
@@ -126,7 +146,7 @@ export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
     // Enviar notificación de SOS activo con opción de cancelar
     await enviarNotificacionSOSActivo(tipo);
     
-    console.log(`SOS ${tipo} activado desde segundo plano`);
+    console.log(`SOS ${tipo} activado desde segundo plano - RiderID: ${riderId}`);
     
     // Programar envío inmediato de ubicación
     setTimeout(async () => {
@@ -331,8 +351,41 @@ export const manejarCicloVidaApp = {
       // Resetear flags de notificaciones cuando la app vuelve a estar activa
       await AsyncStorage.removeItem('notificacionBackgroundEnviada');
       await AsyncStorage.removeItem('notificacionAccesoEnviada');
+      
+      // Limpiar notificaciones pendientes que puedan causar alertas automáticas
+      await limpiarNotificacionesPendientes();
+      
       await optimizarRendimientoBackground();
     }
+  }
+};
+
+// Función para limpiar notificaciones pendientes que puedan causar alertas automáticas
+export const limpiarNotificacionesPendientes = async () => {
+  try {
+    // Limpiar flags de notificaciones que puedan causar alertas automáticas
+    await AsyncStorage.removeItem('notificacionBackgroundEnviada');
+    await AsyncStorage.removeItem('notificacionAccesoEnviada');
+    
+    // Limpiar cualquier SOS que se haya activado automáticamente desde background
+    const sosActivo = await AsyncStorage.getItem('sosActivo');
+    if (sosActivo === 'true') {
+      const sosInicio = await AsyncStorage.getItem('sosInicio');
+      if (sosInicio) {
+        const tiempoTranscurrido = Date.now() - parseInt(sosInicio);
+        // Si el SOS se activó hace menos de 5 segundos, probablemente fue automático
+        if (tiempoTranscurrido < 5000) {
+          console.log('SOS automático detectado, cancelando...');
+          await AsyncStorage.setItem('sosActivo', 'false');
+          await AsyncStorage.removeItem('sosInicio');
+          await AsyncStorage.removeItem('tipoSOS');
+        }
+      }
+    }
+    
+    console.log('Notificaciones pendientes limpiadas');
+  } catch (error) {
+    console.error('Error limpiando notificaciones pendientes:', error);
   }
 };
 

@@ -18,7 +18,7 @@ import axios from "axios";
 const { width } = Dimensions.get('window');
 const BACKEND_URL = "http://192.168.1.41:10000";
 
-export default function UserNavbar({ user, onLogout, onUpdateUser }) {
+export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onClose }) {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   
@@ -27,9 +27,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
   const [loading, setLoading] = useState(false);
   
   // Estados para cambiar contraseña
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [email, setEmail] = useState("");
 
   const dynamicStyles = StyleSheet.create({
     navbar: {
@@ -64,20 +62,22 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
+      justifyContent: 'flex-end',
       alignItems: 'center',
     },
     modalContent: {
       backgroundColor: isDarkMode ? "#1a1a1a" : "#ffffff",
       borderRadius: 20,
       padding: 30,
-      width: width * 0.9,
+      width: width * 0.95,
       maxHeight: '80%',
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
       shadowRadius: 8,
       elevation: 8,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
     },
     modalHeader: {
       flexDirection: 'row',
@@ -227,34 +227,26 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
   };
 
   const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert("Error", "Por favor completa todos los campos");
+    if (!email) {
+      Alert.alert("Error", "Por favor ingresa tu email");
       return;
     }
 
-    if (newPassword.length < 6) {
-      Alert.alert("Error", "La nueva contraseña debe tener al menos 6 caracteres");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "Las contraseñas no coinciden");
+    if (!isValidEmail(email)) {
+      Alert.alert("Error", "Por favor ingresa un email válido");
       return;
     }
 
     setLoading(true);
 
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await axios.put(
-        `${BACKEND_URL}/auth/change-password`,
+      const response = await axios.post(
+        `${BACKEND_URL}/auth/reset-password`,
         {
-          currentPassword,
-          newPassword
+          email: email.toLowerCase().trim()
         },
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
           timeout: 10000
@@ -264,19 +256,19 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
       if (response.data.success) {
         Alert.alert(
           "Éxito",
-          "Contraseña actualizada correctamente",
-          [{ text: "OK", onPress: () => setShowChangePassword(false) }]
+          "Se ha enviado una nueva contraseña a tu email. Revisa tu bandeja de entrada.",
+          [{ text: "OK", onPress: () => {
+            setShowChangePassword(false);
+            setEmail("");
+          }}]
         );
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
       } else {
-        Alert.alert("Error", response.data.message || "Error al cambiar contraseña");
+        Alert.alert("Error", response.data.message || "Error al enviar nueva contraseña");
       }
     } catch (error) {
-      console.error('Error cambiando contraseña:', error);
-      if (error.response?.status === 400) {
-        Alert.alert("Error", error.response.data.message || "Contraseña actual incorrecta");
+      console.error('Error enviando nueva contraseña:', error);
+      if (error.response?.status === 404) {
+        Alert.alert("Error", "Email no encontrado en el sistema");
       } else {
         Alert.alert("Error", "Error de conexión. Verifica tu internet.");
       }
@@ -285,25 +277,19 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
     }
   };
 
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   return (
     <>
-      {/* Botón de perfil en la navbar */}
-      <View style={dynamicStyles.navbar}>
-        <TouchableOpacity 
-          style={dynamicStyles.profileButton}
-          onPress={() => setShowProfile(true)}
-        >
-          <Text style={{ fontSize: 20 }}>👤</Text>
-          <Text style={dynamicStyles.profileText}>{user?.nombre || 'Usuario'}</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Modal de perfil */}
       <Modal
-        visible={showProfile}
+        visible={visible}
         transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowProfile(false)}
+        animationType="slide"
+        onRequestClose={onClose}
       >
         <View style={dynamicStyles.modalOverlay}>
           <View style={dynamicStyles.modalContent}>
@@ -311,7 +297,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
               <Text style={dynamicStyles.modalTitle}>👤 Mi Perfil</Text>
               <TouchableOpacity 
                 style={dynamicStyles.closeButton}
-                onPress={() => setShowProfile(false)}
+                onPress={onClose}
               >
                 <Text style={dynamicStyles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -378,7 +364,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
         <View style={dynamicStyles.modalOverlay}>
           <View style={dynamicStyles.modalContent}>
             <View style={dynamicStyles.modalHeader}>
-              <Text style={dynamicStyles.modalTitle}>🔐 Cambiar Contraseña</Text>
+              <Text style={dynamicStyles.modalTitle}>🔐 Nueva Contraseña</Text>
               <TouchableOpacity 
                 style={dynamicStyles.closeButton}
                 onPress={() => setShowChangePassword(false)}
@@ -389,42 +375,23 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={dynamicStyles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Contraseña Actual</Text>
+                <Text style={dynamicStyles.inputLabel}>Email</Text>
                 <TextInput
-                  style={[dynamicStyles.input, currentPassword ? dynamicStyles.inputFocused : null]}
-                  placeholder="Tu contraseña actual"
+                  style={[dynamicStyles.input, email ? dynamicStyles.inputFocused : null]}
+                  placeholder="Ingresa tu email"
                   placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
-                  value={currentPassword}
-                  onChangeText={setCurrentPassword}
-                  secureTextEntry
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
-
+              
               <View style={dynamicStyles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Nueva Contraseña</Text>
-                <TextInput
-                  style={[dynamicStyles.input, newPassword ? dynamicStyles.inputFocused : null]}
-                  placeholder="Mínimo 6 caracteres"
-                  placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={dynamicStyles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Confirmar Nueva Contraseña</Text>
-                <TextInput
-                  style={[dynamicStyles.input, confirmPassword ? dynamicStyles.inputFocused : null]}
-                  placeholder="Repite tu nueva contraseña"
-                  placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
+                <Text style={[dynamicStyles.inputLabel, { color: "#7f8c8d", fontSize: 14 }]}>
+                  Se enviará una nueva contraseña a tu email
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -436,7 +403,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser }) {
                 disabled={loading}
               >
                 <Text style={dynamicStyles.actionButtonText}>
-                  {loading ? "Cambiando..." : "✅ Cambiar Contraseña"}
+                  {loading ? "Enviando..." : "📧 Enviar Nueva Contraseña"}
                 </Text>
               </TouchableOpacity>
 

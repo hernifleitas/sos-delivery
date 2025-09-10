@@ -2,6 +2,7 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { activarSOSDesdeNotificacion } from './backgroundConfig';
+import axios from 'axios';
 
 // Configurar categorías de notificaciones con acciones
 export const configurarCategoriasNotificaciones = async () => {
@@ -94,6 +95,29 @@ export const manejarRespuestaNotificacion = async (response) => {
           // Cancelar cualquier SOS activo
           await AsyncStorage.setItem('sosActivo', 'false');
           await AsyncStorage.setItem('sosEnviado', 'true');
+          // Enviar estado normal al backend para limpiar alerta
+          try {
+            const riderId = await AsyncStorage.getItem('riderId');
+            const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
+            const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
+            const color = (await AsyncStorage.getItem('color')) || 'No especificado';
+            const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
+            const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+            await axios.post('http://192.168.1.41:10000/sos', {
+              riderId,
+              nombre,
+              moto,
+              color,
+              ubicacion,
+              fechaHora: new Date().toISOString(),
+              tipo: 'normal',
+            }, {
+              timeout: 10000,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } catch (e) {
+            console.log('No se pudo enviar estado normal al cancelar:', e?.message);
+          }
           break;
         default:
           console.log('Acción no reconocida:', actionIdentifier);
@@ -103,6 +127,24 @@ export const manejarRespuestaNotificacion = async (response) => {
         case 'CANCELAR_SOS_ACTIVO':
           console.log('Cancelando SOS activo desde notificación');
           await cancelarSOSDesdeNotificacion();
+          // Además, enviar normal al backend
+          try {
+            const riderId = await AsyncStorage.getItem('riderId');
+            const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
+            const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
+            const color = (await AsyncStorage.getItem('color')) || 'No especificado';
+            const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
+            const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+            await axios.post('http://192.168.1.41:10000/sos', {
+              riderId,
+              nombre,
+              moto,
+              color,
+              ubicacion,
+              fechaHora: new Date().toISOString(),
+              tipo: 'normal',
+            });
+          } catch (e) {}
           break;
         default:
           console.log('Acción no reconocida para SOS activo:', actionIdentifier);

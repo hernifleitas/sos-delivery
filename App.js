@@ -4,7 +4,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, AppState, u
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { iniciarUbicacionBackground, detenerUbicacionBackground, verificarEstadoTracking } from "./tasks";
-import { configurarNotificaciones, manejarCicloVidaApp, enviarNotificacionSOS, activarSOSDesdeNotificacion } from "./backgroundConfig";
+import { configurarNotificaciones, manejarCicloVidaApp, enviarNotificacionSOS, activarSOSDesdeNotificacion, limpiarNotificacionesPendientes } from "./backgroundConfig";
 import { configurarAccesoRapido, enviarNotificacionConAcciones, manejarRespuestaNotificacion } from "./quickActions";
 import axios from "axios";
 import MapRidersRealtime from "./MapRidersRealtime";
@@ -22,10 +22,11 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
   const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   
   // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
-  const [tipoSOS, setTipoSOS] = useState(""); // "robo" o "pinchazo"
+  const [tipoSOS, setTipoSOS] = useState(""); // "robo" o "accidente"
   const [contador, setContador] = useState(0);
   const [trackingActivo, setTrackingActivo] = useState(false);
 
@@ -34,6 +35,9 @@ export default function App() {
 
   useEffect(() => {
     const cargarDatos = async () => {
+      // Limpiar notificaciones pendientes que puedan causar alertas automáticas
+      await limpiarNotificacionesPendientes();
+      
       // Configurar notificaciones y acceso rápido
       await configurarNotificaciones();
       await configurarAccesoRapido();
@@ -42,37 +46,38 @@ export default function App() {
       const userLoggedIn = await AsyncStorage.getItem("userLoggedIn");
       const userData = await AsyncStorage.getItem("usuario");
       const authToken = await AsyncStorage.getItem("authToken");
-      
-      if (userLoggedIn === "true" && userData && authToken) {
-        try {
-          // Verificar token con el backend
-          const response = await axios.get("http://192.168.1.41:10000/auth/verify", {
-            headers: { 'Authorization': `Bearer ${authToken}` },
-            timeout: 10000
-          });
-          
-          if (response.data.success) {
-            const userInfo = JSON.parse(userData);
-            setUser(userInfo);
-            setIsLoggedIn(true);
-            setCurrentScreen('main');
-          } else {
-            // Token inválido, limpiar datos
-            await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
-            setCurrentScreen('splash');
-          }
-        } catch (error) {
-          console.error('Error verificando token:', error);
-          // Error de conexión o token inválido, limpiar datos
-          await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
-          setCurrentScreen('splash');
+
+      // Mantener sesión si hay datos locales; verificar token en segundo plano
+      if (userLoggedIn === "true" && userData) {
+        const userInfo = JSON.parse(userData);
+        setUser(userInfo);
+        setIsLoggedIn(true);
+        setCurrentScreen('main');
+
+        if (authToken) {
+          (async () => {
+            try {
+              const response = await axios.get("http://192.168.1.41:10000/auth/verify", {
+                headers: { 'Authorization': `Bearer ${authToken}` },
+                timeout: 10000
+              });
+              if (!response.data.success) {
+                await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
+              }
+            } catch (error) {
+              // Solo cerrar si el token es inválido explícitamente
+              if (error?.response?.status === 401) {
+                await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
+              }
+            }
+          })();
         }
       } else {
         setCurrentScreen('splash');
       }
 
       // Cargar estados de SOS y tracking solo si está logueado
-      if (isLoggedIn) {
+      if (userLoggedIn === "true" && userData && authToken) {
         const sos = await AsyncStorage.getItem("sosActivo");
         const tipo = await AsyncStorage.getItem("tipoSOS");
         if (sos === "true") {
@@ -188,6 +193,20 @@ export default function App() {
     if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
     if (intervaloSOS.current) clearInterval(intervaloSOS.current);
     
+    // Limpiar datos de AsyncStorage
+    await AsyncStorage.multiRemove([
+      'userLoggedIn', 
+      'usuario', 
+      'authToken',
+      'sosActivo',
+      'sosInicio',
+      'sosEnviado',
+      'tipoSOS',
+      'contadorActualizaciones',
+      'notificacionBackgroundEnviada',
+      'notificacionAccesoEnviada'
+    ]);
+    
     // Detener tracking
     await detenerUbicacionBackground();
     setTrackingActivo(false);
@@ -244,6 +263,7 @@ export default function App() {
     await AsyncStorage.setItem("sosCancelado", "true");
     await AsyncStorage.setItem("sosCanceladoTimestamp", Date.now().toString());
     await AsyncStorage.removeItem("sosInicio");
+    await AsyncStorage.removeItem("contadorActualizaciones");
 
     // Enviar estado "normal" (bandera verde) por unos minutos
     await enviarEstadoNormal();
@@ -378,13 +398,6 @@ export default function App() {
 
   return (
     <View style={dynamicStyles.container}>
-      {/* Navbar de usuario */}
-      <UserNavbar 
-        user={user} 
-        onLogout={handleLogout} 
-        onUpdateUser={handleUpdateUser}
-      />
-      
       {/* Barra superior fija con botones */}
       <View style={styles.topBar}>
         <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
@@ -404,9 +417,29 @@ export default function App() {
           >
             <Text style={styles.topButtonText}>🚨</Text>
           </TouchableOpacity>
+          
+          {/* Botón de perfil */}
+          <TouchableOpacity 
+            style={[styles.topButton, { backgroundColor: "#34495e" }]}
+            onPress={() => {
+              // Abrir navbar de usuario
+              setShowUserMenu(true);
+            }}
+          >
+            <Text style={styles.topButtonText}>👤</Text>
+          </TouchableOpacity>
         </View>
 
       </View>
+      
+      {/* Navbar de usuario */}
+      <UserNavbar 
+        user={user} 
+        onLogout={handleLogout} 
+        onUpdateUser={handleUpdateUser}
+        visible={showUserMenu}
+        onClose={() => setShowUserMenu(false)}
+      />
 
       {/* Estado del SOS (si está activo) */}
       {sosActivo && (
@@ -435,9 +468,9 @@ export default function App() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sosButton, { backgroundColor: "#f39c12" }]}
-            onPress={() => activarSOS("pinchazo")}
+            onPress={() => activarSOS("accidente")}
           >
-            <Text style={styles.sosButtonText}>🛠️ SOS Pinchazo</Text>
+            <Text style={styles.sosButtonText}>🚑 SOS Accidente</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -500,7 +533,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: "rgba(26, 26, 26, 0.95)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderBottomWidth: 1,
     borderBottomColor: "#e74c3c",
     position: "absolute",
@@ -517,7 +550,7 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#ffffff"
+    color: "#2c3e50"
   },
   topButtons: {
     flexDirection: "row",

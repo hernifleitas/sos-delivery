@@ -110,4 +110,24 @@ router.put('/change-password', authService.authenticateToken, async (req, res) =
   }
 });
 
+// Ruta para reset de contraseña
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const result = await authService.resetPassword(email);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error reseteando contraseña:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
 module.exports = router;

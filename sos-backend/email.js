@@ -28,6 +28,26 @@ class EmailService {
     });
   }
 
+  // Enviar email de reset de contraseña
+  async sendPasswordResetEmail(user, newPassword) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_FROM || 'Rider SOS <noreply@ridersos.com>',
+        to: user.email,
+        subject: '🔐 Nueva Contraseña - Rider SOS',
+        html: this.generatePasswordResetEmailHTML(user, newPassword),
+        text: this.generatePasswordResetEmailText(user, newPassword)
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log('Email de reset de contraseña enviado:', result.messageId);
+      return result;
+    } catch (error) {
+      console.error('Error enviando email de reset:', error);
+      throw error;
+    }
+  }
+
   // Enviar email de bienvenida
   async sendWelcomeEmail(user) {
     try {
@@ -46,6 +66,114 @@ class EmailService {
       console.error('Error enviando email de bienvenida:', error);
       throw error;
     }
+  }
+
+  // Generar HTML del email de reset de contraseña
+  generatePasswordResetEmailHTML(user, newPassword) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Nueva Contraseña - Rider SOS</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; margin: -20px -20px 20px -20px; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { padding: 20px 0; }
+          .password-box { background: #f8f9fa; border: 2px solid #e74c3c; border-radius: 8px; padding: 15px; text-align: center; margin: 20px 0; }
+          .password { font-size: 24px; font-weight: bold; color: #e74c3c; letter-spacing: 2px; font-family: monospace; }
+          .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+          .button { display: inline-block; background: #e74c3c; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔐 Nueva Contraseña</h1>
+            <p>Rider SOS - Seguridad para Repartidores</p>
+          </div>
+          
+          <div class="content">
+            <h2>Hola ${user.nombre},</h2>
+            
+            <p>Has solicitado una nueva contraseña para tu cuenta de Rider SOS. Aquí tienes tu nueva contraseña:</p>
+            
+            <div class="password-box">
+              <p><strong>Tu nueva contraseña es:</strong></p>
+              <div class="password">${newPassword}</div>
+            </div>
+            
+            <div class="warning">
+              <strong>⚠️ Importante:</strong>
+              <ul>
+                <li>Guarda esta contraseña en un lugar seguro</li>
+                <li>Te recomendamos cambiarla después de iniciar sesión</li>
+                <li>No compartas esta información con nadie</li>
+              </ul>
+            </div>
+            
+            <p>Puedes iniciar sesión en la aplicación con tu email y esta nueva contraseña.</p>
+            
+            <p><strong>Datos de tu cuenta:</strong></p>
+            <ul>
+              <li><strong>Nombre:</strong> ${user.nombre}</li>
+              <li><strong>Email:</strong> ${user.email}</li>
+              <li><strong>Moto:</strong> ${user.moto}</li>
+              <li><strong>Color:</strong> ${user.color}</li>
+            </ul>
+            
+            <p>Si no solicitaste este cambio, por favor contacta con soporte inmediatamente.</p>
+            
+            <p>¡Gracias por usar Rider SOS y mantenerte seguro en la carretera!</p>
+          </div>
+          
+          <div class="footer">
+            <p>Rider SOS - Sistema de Seguridad para Repartidores</p>
+            <p>Este es un email automático, por favor no respondas a este mensaje.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generar texto del email de reset de contraseña
+  generatePasswordResetEmailText(user, newPassword) {
+    return `
+Nueva Contraseña - Rider SOS
+Seguridad para Repartidores
+
+Hola ${user.nombre},
+
+Has solicitado una nueva contraseña para tu cuenta de Rider SOS.
+
+TU NUEVA CONTRASEÑA ES: ${newPassword}
+
+IMPORTANTE:
+- Guarda esta contraseña en un lugar seguro
+- Te recomendamos cambiarla después de iniciar sesión
+- No compartas esta información con nadie
+
+Datos de tu cuenta:
+- Nombre: ${user.nombre}
+- Email: ${user.email}
+- Moto: ${user.moto}
+- Color: ${user.color}
+
+Puedes iniciar sesión en la aplicación con tu email y esta nueva contraseña.
+
+Si no solicitaste este cambio, por favor contacta con soporte inmediatamente.
+
+¡Gracias por usar Rider SOS y mantenerte seguro en la carretera!
+
+---
+Rider SOS - Sistema de Seguridad para Repartidores
+Este es un email automático, por favor no respondas a este mensaje.
+    `;
   }
 
   // Generar HTML del email de bienvenida
