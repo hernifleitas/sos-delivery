@@ -75,7 +75,7 @@ class AuthService {
       // Hash de la contraseña
       const hashedPassword = await this.hashPassword(password);
 
-      // Crear usuario en la base de datos
+      // Crear usuario en la base de datos (estado pendiente por defecto)
       const newUser = await database.createUser({
         nombre: nombre.trim(),
         email: email.toLowerCase().trim(),
@@ -84,21 +84,18 @@ class AuthService {
         color: color.trim()
       });
 
-      // Generar token
-      const token = this.generateToken(newUser);
-
       return {
         success: true,
-        message: 'Usuario registrado correctamente',
+        message: 'Registro exitoso. Tu cuenta está pendiente de aprobación por un administrador. Te notificaremos por email cuando sea aprobada.',
         user: {
           id: newUser.id,
           nombre: newUser.nombre,
           email: newUser.email,
           moto: newUser.moto,
           color: newUser.color,
-          created_at: newUser.created_at
-        },
-        token
+          created_at: newUser.created_at,
+          status: 'pending'
+        }
       };
     } catch (error) {
       console.error('Error en registro:', error);
@@ -118,6 +115,21 @@ class AuthService {
         return {
           success: false,
           message: 'Email o contraseña incorrectos'
+        };
+      }
+
+      // Verificar estado de aprobación
+      if (user.status === 'pending') {
+        return {
+          success: false,
+          message: 'Tu cuenta está pendiente de aprobación por un administrador'
+        };
+      }
+
+      if (user.status === 'rejected') {
+        return {
+          success: false,
+          message: 'Tu cuenta ha sido rechazada. Contacta al administrador'
         };
       }
 
@@ -218,6 +230,26 @@ class AuthService {
     next();
   }
 
+  // Middleware para verificar si es administrador
+  async requireAdmin(req, res, next) {
+    try {
+      const isAdmin = await database.isAdmin(req.user.id);
+      if (!isAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Acceso denegado. Solo administradores pueden acceder a esta función'
+        });
+      }
+      next();
+    } catch (error) {
+      console.error('Error verificando permisos de administrador:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  }
+
   // Actualizar perfil de usuario
   async updateProfile(userId, updateData) {
     try {
@@ -268,8 +300,8 @@ class AuthService {
     }
   }
 
-  // Reset de contraseña
-  async resetPassword(email) {
+  // Solicitar reset de contraseña
+  async requestPasswordReset(email) {
     try {
       // Buscar usuario por email
       const user = await database.findUserByEmail(email);
@@ -280,9 +312,67 @@ class AuthService {
         };
       }
 
-      // Generar nueva contraseña aleatoria
-      const newPassword = this.generateRandomPassword();
-      
+      // Verificar que el usuario esté aprobado
+      if (user.status !== 'approved') {
+        return {
+          success: false,
+          message: 'Tu cuenta aún no ha sido aprobada por un administrador'
+        };
+      }
+
+      // Generar token de reset
+      const resetToken = this.generateResetToken();
+      const expiresAt = new Date(Date.now() + 3600000); // 1 hora
+
+      // Guardar token en la base de datos
+      await database.saveResetToken(email, resetToken, expiresAt);
+
+      // Enviar email con el link de reset
+      try {
+        const emailService = require('./email');
+        await emailService.sendPasswordResetLinkEmail(user, resetToken);
+        console.log(`Link de reset enviado a ${user.email}`);
+      } catch (emailError) {
+        console.error('Error enviando email de reset:', emailError);
+        return {
+          success: false,
+          message: 'Error enviando email de verificación'
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Se ha enviado un link a tu email para cambiar la contraseña'
+      };
+    } catch (error) {
+      console.error('Error solicitando reset de contraseña:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
+  }
+
+  // Reset de contraseña con token
+  async resetPasswordWithToken(token, newPassword) {
+    try {
+      // Buscar usuario por token
+      const user = await database.findUserByResetToken(token);
+      if (!user) {
+        return {
+          success: false,
+          message: 'Token inválido o expirado'
+        };
+      }
+
+      // Validar nueva contraseña
+      if (newPassword.length < 6) {
+        return {
+          success: false,
+          message: 'La nueva contraseña debe tener al menos 6 caracteres'
+        };
+      }
+
       // Hash de la nueva contraseña
       const hashedPassword = await this.hashPassword(newPassword);
 
@@ -296,27 +386,30 @@ class AuthService {
         };
       }
 
-      // Enviar email con la nueva contraseña
-      try {
-        const emailService = require('./email');
-        await emailService.sendPasswordResetEmail(user, newPassword);
-        console.log(`Nueva contraseña enviada a ${user.email}`);
-      } catch (emailError) {
-        console.error('Error enviando email de reset:', emailError);
-        // No fallar el reset si el email falla
-      }
+      // Limpiar token de reset
+      await database.clearResetToken(user.id);
 
       return {
         success: true,
-        message: 'Nueva contraseña enviada a tu email'
+        message: 'Contraseña actualizada correctamente'
       };
     } catch (error) {
-      console.error('Error reseteando contraseña:', error);
+      console.error('Error reseteando contraseña con token:', error);
       return {
         success: false,
         message: 'Error interno del servidor'
       };
     }
+  }
+
+  // Generar token de reset
+  generateResetToken() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let token = '';
+    for (let i = 0; i < 32; i++) {
+      token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return token;
   }
 
   // Generar contraseña aleatoria
@@ -327,6 +420,93 @@ class AuthService {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return password;
+  }
+
+  // Sistema de aprobación de usuarios
+  async getPendingUsers() {
+    try {
+      const users = await database.getPendingUsers();
+      return {
+        success: true,
+        users
+      };
+    } catch (error) {
+      console.error('Error obteniendo usuarios pendientes:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
+  }
+
+  async approveUser(userId) {
+    try {
+      const result = await database.approveUser(userId);
+      if (result.changes === 0) {
+        return {
+          success: false,
+          message: 'Usuario no encontrado'
+        };
+      }
+
+      // Obtener datos del usuario para enviar email
+      const user = await database.findUserById(userId);
+      if (user) {
+        try {
+          const emailService = require('./email');
+          await emailService.sendApprovalEmail(user);
+          console.log(`Email de aprobación enviado a ${user.email}`);
+        } catch (emailError) {
+          console.error('Error enviando email de aprobación:', emailError);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Usuario aprobado correctamente'
+      };
+    } catch (error) {
+      console.error('Error aprobando usuario:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
+  }
+
+  async rejectUser(userId) {
+    try {
+      const result = await database.rejectUser(userId);
+      if (result.changes === 0) {
+        return {
+          success: false,
+          message: 'Usuario no encontrado'
+        };
+      }
+
+      // Obtener datos del usuario para enviar email
+      const user = await database.findUserById(userId);
+      if (user) {
+        try {
+          const emailService = require('./email');
+          await emailService.sendRejectionEmail(user);
+          console.log(`Email de rechazo enviado a ${user.email}`);
+        } catch (emailError) {
+          console.error('Error enviando email de rechazo:', emailError);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Usuario rechazado correctamente'
+      };
+    } catch (error) {
+      console.error('Error rechazando usuario:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
   }
 
   // Cambiar contraseña

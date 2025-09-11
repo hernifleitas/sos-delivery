@@ -192,23 +192,10 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       });
 
       if (response.data.success) {
-        const userData = response.data.user;
-        
-        // Guardar datos del usuario en AsyncStorage
-        await AsyncStorage.setItem("usuario", JSON.stringify({
-          nombre: userData.nombre,
-          moto: userData.moto,
-          color: userData.color,
-          email: userData.email
-        }));
-        
-        await AsyncStorage.setItem("userLoggedIn", "true");
-        await AsyncStorage.setItem("userId", userData.id.toString());
-        
         Alert.alert(
           "¡Registro Exitoso!", 
-          `¡Bienvenido ${userData.nombre}! Tu cuenta ha sido creada correctamente.`,
-          [{ text: "Continuar", onPress: () => onRegisterSuccess(userData) }]
+          response.data.message,
+          [{ text: "Entendido", onPress: () => onNavigate('login') }]
         );
       } else {
         Alert.alert("Error", response.data.message || "Error al registrarse");
@@ -357,7 +344,7 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
 
           {loading && (
             <Text style={dynamicStyles.loadingText}>
-              Registrando usuario y enviando email...
+              Registrando usuario...
             </Text>
           )}
 

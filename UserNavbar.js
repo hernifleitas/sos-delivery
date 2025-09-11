@@ -241,7 +241,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
 
     try {
       const response = await axios.post(
-        `${BACKEND_URL}/auth/reset-password`,
+        `${BACKEND_URL}/auth/request-password-reset`,
         {
           email: email.toLowerCase().trim()
         },
@@ -256,19 +256,21 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
       if (response.data.success) {
         Alert.alert(
           "Éxito",
-          "Se ha enviado una nueva contraseña a tu email. Revisa tu bandeja de entrada.",
+          "Se ha enviado un link a tu email para cambiar la contraseña. Revisa tu bandeja de entrada.",
           [{ text: "OK", onPress: () => {
             setShowChangePassword(false);
             setEmail("");
           }}]
         );
       } else {
-        Alert.alert("Error", response.data.message || "Error al enviar nueva contraseña");
+        Alert.alert("Error", response.data.message || "Error al enviar link de recuperación");
       }
     } catch (error) {
-      console.error('Error enviando nueva contraseña:', error);
+      console.error('Error enviando link de recuperación:', error);
       if (error.response?.status === 404) {
         Alert.alert("Error", "Email no encontrado en el sistema");
+      } else if (error.response?.status === 400) {
+        Alert.alert("Error", error.response.data?.message || "Error al enviar link");
       } else {
         Alert.alert("Error", "Error de conexión. Verifica tu internet.");
       }
@@ -390,7 +392,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
               
               <View style={dynamicStyles.inputContainer}>
                 <Text style={[dynamicStyles.inputLabel, { color: "#7f8c8d", fontSize: 14 }]}>
-                  Se enviará una nueva contraseña a tu email
+                  Se enviará un link a tu email para cambiar la contraseña
                 </Text>
               </View>
 
@@ -403,7 +405,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
                 disabled={loading}
               >
                 <Text style={dynamicStyles.actionButtonText}>
-                  {loading ? "Enviando..." : "📧 Enviar Nueva Contraseña"}
+                  {loading ? "Enviando..." : "📧 Enviar Link de Recuperación"}
                 </Text>
               </TouchableOpacity>
 

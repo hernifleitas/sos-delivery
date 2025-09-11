@@ -11,21 +11,7 @@ router.post('/register', async (req, res) => {
     console.log('Resultado del registro:', result);
     
     if (result.success) {
-      // Enviar email de bienvenida
-      try {
-        await emailService.sendWelcomeEmail(result.user);
-        console.log(`Email de bienvenida enviado a ${result.user.email}`);
-      } catch (emailError) {
-        console.error('Error enviando email de bienvenida:', emailError);
-        // No fallar el registro si el email falla
-      }
-      
-      res.status(201).json({
-        success: true,
-        message: 'Usuario registrado correctamente',
-        user: result.user,
-        token: result.token
-      });
+      res.status(201).json(result);
     } else {
       res.status(400).json(result);
     }
@@ -110,11 +96,11 @@ router.put('/change-password', authService.authenticateToken, async (req, res) =
   }
 });
 
-// Ruta para reset de contraseña
-router.post('/reset-password', async (req, res) => {
+// Ruta para solicitar reset de contraseña
+router.post('/request-password-reset', async (req, res) => {
   try {
     const { email } = req.body;
-    const result = await authService.resetPassword(email);
+    const result = await authService.requestPasswordReset(email);
     
     if (result.success) {
       res.json(result);
@@ -122,7 +108,108 @@ router.post('/reset-password', async (req, res) => {
       res.status(400).json(result);
     }
   } catch (error) {
-    console.error('Error reseteando contraseña:', error);
+    console.error('Error solicitando reset de contraseña:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Ruta para reset de contraseña con token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    const result = await authService.resetPasswordWithToken(token, newPassword);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error reseteando contraseña con token:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Rutas de administración
+// Obtener usuarios pendientes
+router.get('/admin/pending-users', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+  try {
+    const result = await authService.getPendingUsers();
+    res.json(result);
+  } catch (error) {
+    console.error('Error obteniendo usuarios pendientes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Aprobar usuario
+router.post('/admin/approve-user/:userId', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await authService.approveUser(userId);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error aprobando usuario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Rechazar usuario
+router.post('/admin/reject-user/:userId', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await authService.rejectUser(userId);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Error rechazando usuario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// Ruta para hacer administrador (solo para desarrollo)
+router.post('/admin/make-admin/:userId', authService.authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await database.makeAdmin(userId);
+    
+    if (result.changes > 0) {
+      res.json({
+        success: true,
+        message: 'Usuario promovido a administrador'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+  } catch (error) {
+    console.error('Error promoviendo a administrador:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'

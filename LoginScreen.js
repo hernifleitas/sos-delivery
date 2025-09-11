@@ -25,6 +25,10 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -151,6 +155,65 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
       textAlign: "center",
       marginTop: 10,
     },
+    forgotPasswordContainer: {
+      marginTop: 20,
+      padding: 20,
+      backgroundColor: isDarkMode ? "#1a1a1a" : "#ffffff",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDarkMode ? "#444444" : "#e1e8ed",
+    },
+    forgotPasswordTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: isDarkMode ? "#ffffff" : "#2c3e50",
+      marginBottom: 15,
+      textAlign: "center",
+    },
+    forgotPasswordText: {
+      fontSize: 14,
+      color: isDarkMode ? "#cccccc" : "#666666",
+      marginBottom: 15,
+      textAlign: "center",
+    },
+    resetButton: {
+      backgroundColor: "#3498db",
+      paddingVertical: 12,
+      borderRadius: 8,
+      marginTop: 10,
+    },
+    resetButtonText: {
+      color: "#ffffff",
+      fontSize: 16,
+      fontWeight: "bold",
+      textAlign: "center",
+    },
+    resetButtonDisabled: {
+      backgroundColor: "#95a5a6",
+    },
+    resetMessage: {
+      fontSize: 14,
+      textAlign: "center",
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? "#2d2d2d" : "#f8f9fa",
+    },
+    resetMessageSuccess: {
+      color: "#27ae60",
+    },
+    resetMessageError: {
+      color: "#e74c3c",
+    },
+    forgotPasswordLink: {
+      marginTop: 15,
+      alignItems: "center",
+    },
+    forgotPasswordLinkText: {
+      fontSize: 14,
+      color: "#e74c3c",
+      textDecorationLine: "underline",
+    },
   });
 
   const handleLogin = async () => {
@@ -233,6 +296,52 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
   const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      Alert.alert("Error", "Por favor ingresa tu email");
+      return;
+    }
+
+    if (!isValidEmail(resetEmail)) {
+      Alert.alert("Error", "Por favor ingresa un email válido");
+      return;
+    }
+
+    setResetLoading(true);
+    setResetMessage("");
+
+    try {
+      const response = await axios.post(`${BACKEND_URL}/auth/request-password-reset`, {
+        email: resetEmail.toLowerCase().trim()
+      }, {
+        timeout: 10000,
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (response.data.success) {
+        setResetMessage("Se ha enviado un link a tu email para cambiar la contraseña");
+        Alert.alert(
+          "Email Enviado", 
+          "Revisa tu bandeja de entrada y sigue las instrucciones para cambiar tu contraseña.",
+          [{ text: "Entendido", onPress: () => setShowForgotPassword(false) }]
+        );
+      } else {
+        setResetMessage(response.data.message || "Error al enviar el email");
+      }
+    } catch (error) {
+      console.error("Error en reset de contraseña:", error);
+      if (error.response?.status === 400) {
+        setResetMessage(error.response.data?.message || "Error al enviar el email");
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        setResetMessage("Error de conexión. Verifica que el backend esté funcionando.");
+      } else {
+        setResetMessage("Error de conexión. Verifica tu internet.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -322,7 +431,77 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Enlace de olvidé mi contraseña */}
+          <View style={dynamicStyles.forgotPasswordLink}>
+            <TouchableOpacity onPress={() => setShowForgotPassword(!showForgotPassword)}>
+              <Text style={dynamicStyles.forgotPasswordLinkText}>
+                ¿Olvidaste tu contraseña?
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Formulario de reset de contraseña */}
+        {showForgotPassword && (
+          <View style={dynamicStyles.forgotPasswordContainer}>
+            <Text style={dynamicStyles.forgotPasswordTitle}>
+              🔐 Recuperar Contraseña
+            </Text>
+            <Text style={dynamicStyles.forgotPasswordText}>
+              Ingresa tu email y te enviaremos un link para cambiar tu contraseña
+            </Text>
+            
+            <View style={dynamicStyles.inputContainer}>
+              <Text style={dynamicStyles.label}>Email</Text>
+              <TextInput
+                style={[dynamicStyles.input, resetEmail ? dynamicStyles.inputFocused : null]}
+                placeholder="tu@email.com"
+                placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                dynamicStyles.resetButton,
+                resetLoading ? dynamicStyles.resetButtonDisabled : null
+              ]}
+              onPress={handleForgotPassword}
+              disabled={resetLoading}
+            >
+              <Text style={dynamicStyles.resetButtonText}>
+                {resetLoading ? "Enviando..." : "Enviar Link de Recuperación"}
+              </Text>
+            </TouchableOpacity>
+
+            {resetMessage ? (
+              <Text style={[
+                dynamicStyles.resetMessage,
+                resetMessage.includes("enviado") ? dynamicStyles.resetMessageSuccess : dynamicStyles.resetMessageError
+              ]}>
+                {resetMessage}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={{ marginTop: 15, alignItems: "center" }}
+              onPress={() => {
+                setShowForgotPassword(false);
+                setResetEmail("");
+                setResetMessage("");
+              }}
+            >
+              <Text style={[dynamicStyles.forgotPasswordLinkText, { textDecorationLine: "none" }]}>
+                ← Volver al login
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

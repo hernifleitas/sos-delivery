@@ -13,6 +13,7 @@ import SplashScreen from "./SplashScreen";
 import LoginScreen from "./LoginScreen";
 import RegisterScreen from "./RegisterScreen";
 import UserNavbar from "./UserNavbar";
+import AdminPanel from "./AdminPanel";
 
 export default function App() {
   const colorScheme = useColorScheme();
@@ -23,6 +24,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
@@ -166,6 +169,9 @@ export default function App() {
     await AsyncStorage.setItem("usuario", JSON.stringify(userData));
     await AsyncStorage.setItem("userLoggedIn", "true");
     await AsyncStorage.setItem("authToken", userData.token);
+    
+    // Verificar si es administrador
+    await checkAdminStatus();
   };
 
   const handleRegisterSuccess = async (userData) => {
@@ -214,6 +220,35 @@ export default function App() {
 
   const handleUpdateUser = (updatedUser) => {
     setUser(updatedUser);
+  };
+
+  const checkAdminStatus = async () => {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      if (token) {
+        const response = await axios.get(`${BACKEND_URL}/auth/verify`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          timeout: 10000
+        });
+        
+        if (response.data.success) {
+          // Verificar si el usuario es administrador
+          const adminResponse = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            timeout: 10000
+          });
+          setIsAdmin(true);
+        }
+      }
+    } catch (error) {
+      // Si hay error 403, significa que no es administrador
+      if (error.response?.status === 403) {
+        setIsAdmin(false);
+      } else {
+        console.error('Error verificando estado de administrador:', error);
+        setIsAdmin(false);
+      }
+    }
   };
 
   const activarSOS = async (tipo) => {
@@ -418,6 +453,19 @@ export default function App() {
             <Text style={styles.topButtonText}>🚨</Text>
           </TouchableOpacity>
           
+          {/* Botón de administrador - Solo para administradores */}
+          {isAdmin && (
+            <TouchableOpacity 
+              style={[styles.topButton, { backgroundColor: "#8e44ad" }]}
+              onPress={() => {
+                // Abrir panel de administrador
+                setShowAdminPanel(true);
+              }}
+            >
+              <Text style={styles.topButtonText}>⚙️</Text>
+            </TouchableOpacity>
+          )}
+          
           {/* Botón de perfil */}
           <TouchableOpacity 
             style={[styles.topButton, { backgroundColor: "#34495e" }]}
@@ -440,6 +488,11 @@ export default function App() {
         visible={showUserMenu}
         onClose={() => setShowUserMenu(false)}
       />
+
+      {/* Panel de administrador */}
+      {showAdminPanel && (
+        <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
 
       {/* Estado del SOS (si está activo) */}
       {sosActivo && (
