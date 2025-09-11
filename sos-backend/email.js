@@ -68,6 +68,68 @@ class EmailService {
     }
   }
 
+  // Enviar email con link de reset de contraseña
+  async sendPasswordResetLinkEmail(user, resetToken) {
+    try {
+      const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+      
+      const mailOptions = {
+        from: process.env.EMAIL_FROM || 'Rider SOS <noreply@ridersos.com>',
+        to: user.email,
+        subject: '🔐 Cambiar Contraseña - Rider SOS',
+        html: this.generatePasswordResetLinkEmailHTML(user, resetLink),
+        text: this.generatePasswordResetLinkEmailText(user, resetLink)
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log('Email de reset de contraseña enviado:', result.messageId);
+      return result;
+    } catch (error) {
+      console.error('Error enviando email de reset:', error);
+      throw error;
+    }
+  }
+
+  // Enviar email de aprobación de cuenta
+  async sendApprovalEmail(user) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_FROM || 'Rider SOS <noreply@ridersos.com>',
+        to: user.email,
+        subject: '✅ ¡Tu cuenta ha sido aprobada! - Rider SOS',
+        html: this.generateApprovalEmailHTML(user),
+        text: this.generateApprovalEmailText(user)
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log('Email de aprobación enviado:', result.messageId);
+      return result;
+    } catch (error) {
+      console.error('Error enviando email de aprobación:', error);
+      throw error;
+    }
+  }
+
+  // Enviar email de rechazo de cuenta
+  async sendRejectionEmail(user) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_FROM || 'Rider SOS <noreply@ridersos.com>',
+        to: user.email,
+        subject: '❌ Registro no aprobado - Rider SOS',
+        html: this.generateRejectionEmailHTML(user),
+        text: this.generateRejectionEmailText(user)
+      };
+
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log('Email de rechazo enviado:', result.messageId);
+      return result;
+    } catch (error) {
+      console.error('Error enviando email de rechazo:', error);
+      throw error;
+    }
+  }
+
   // Generar HTML del email de reset de contraseña
   generatePasswordResetEmailHTML(user, newPassword) {
     return `
@@ -454,6 +516,278 @@ Rider SOS - Tu seguridad es nuestra prioridad
 
 ---
 Este email fue enviado automáticamente. Por favor no respondas a este mensaje.
+    `;
+  }
+
+  // Generar HTML del email de reset con link
+  generatePasswordResetLinkEmailHTML(user, resetLink) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cambiar Contraseña - Rider SOS</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; margin: -20px -20px 20px -20px; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { padding: 20px 0; }
+          .button { display: inline-block; background: #e74c3c; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
+          .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔐 Cambiar Contraseña</h1>
+            <p>Rider SOS - Seguridad para Repartidores</p>
+          </div>
+          
+          <div class="content">
+            <h2>Hola ${user.nombre},</h2>
+            
+            <p>Has solicitado cambiar la contraseña de tu cuenta de Rider SOS.</p>
+            
+            <p>Para continuar con el cambio de contraseña, haz clic en el siguiente botón:</p>
+            
+            <div style="text-align: center;">
+              <a href="${resetLink}" class="button">Cambiar Contraseña</a>
+            </div>
+            
+            <div class="warning">
+              <strong>⚠️ Importante:</strong>
+              <ul>
+                <li>Este link es válido por 1 hora</li>
+                <li>Si no solicitaste este cambio, ignora este email</li>
+                <li>No compartas este link con nadie</li>
+              </ul>
+            </div>
+            
+            <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+            <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace;">${resetLink}</p>
+            
+            <p>¡Gracias por usar Rider SOS y mantenerte seguro en la carretera!</p>
+          </div>
+          
+          <div class="footer">
+            <p>Rider SOS - Sistema de Seguridad para Repartidores</p>
+            <p>Este es un email automático, por favor no respondas a este mensaje.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generar texto del email de reset con link
+  generatePasswordResetLinkEmailText(user, resetLink) {
+    return `
+Cambiar Contraseña - Rider SOS
+Seguridad para Repartidores
+
+Hola ${user.nombre},
+
+Has solicitado cambiar la contraseña de tu cuenta de Rider SOS.
+
+Para continuar con el cambio de contraseña, visita el siguiente enlace:
+${resetLink}
+
+IMPORTANTE:
+- Este link es válido por 1 hora
+- Si no solicitaste este cambio, ignora este email
+- No compartas este link con nadie
+
+¡Gracias por usar Rider SOS y mantenerte seguro en la carretera!
+
+---
+Rider SOS - Sistema de Seguridad para Repartidores
+Este es un email automático, por favor no respondas a este mensaje.
+    `;
+  }
+
+  // Generar HTML del email de aprobación
+  generateApprovalEmailHTML(user) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cuenta Aprobada - Rider SOS</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #27ae60, #2ecc71); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; margin: -20px -20px 20px -20px; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { padding: 20px 0; }
+          .success-box { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          .button { display: inline-block; background: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
+          .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ ¡Cuenta Aprobada!</h1>
+            <p>Rider SOS - Seguridad para Repartidores</p>
+          </div>
+          
+          <div class="content">
+            <h2>¡Felicidades ${user.nombre}!</h2>
+            
+            <div class="success-box">
+              <strong>🎉 Tu cuenta ha sido aprobada exitosamente</strong>
+              <p>Ya puedes iniciar sesión en la aplicación y comenzar a usar todas las funcionalidades de Rider SOS.</p>
+            </div>
+            
+            <p><strong>Datos de tu cuenta:</strong></p>
+            <ul>
+              <li><strong>Nombre:</strong> ${user.nombre}</li>
+              <li><strong>Email:</strong> ${user.email}</li>
+              <li><strong>Moto:</strong> ${user.moto}</li>
+              <li><strong>Color:</strong> ${user.color}</li>
+            </ul>
+            
+            <p>Ahora puedes:</p>
+            <ul>
+              <li>🚨 Activar alertas SOS de emergencia</li>
+              <li>📍 Compartir tu ubicación en tiempo real</li>
+              <li>🔔 Recibir notificaciones de otros repartidores</li>
+              <li>👥 Conectarte con la comunidad de riders</li>
+            </ul>
+            
+            <div style="text-align: center;">
+              <a href="#" class="button">Iniciar Sesión</a>
+            </div>
+            
+            <p>¡Bienvenido a la comunidad de Rider SOS y mantente seguro en la carretera!</p>
+          </div>
+          
+          <div class="footer">
+            <p>Rider SOS - Sistema de Seguridad para Repartidores</p>
+            <p>Este es un email automático, por favor no respondas a este mensaje.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generar texto del email de aprobación
+  generateApprovalEmailText(user) {
+    return `
+¡Cuenta Aprobada! - Rider SOS
+Seguridad para Repartidores
+
+¡Felicidades ${user.nombre}!
+
+🎉 Tu cuenta ha sido aprobada exitosamente
+Ya puedes iniciar sesión en la aplicación y comenzar a usar todas las funcionalidades de Rider SOS.
+
+DATOS DE TU CUENTA:
+- Nombre: ${user.nombre}
+- Email: ${user.email}
+- Moto: ${user.moto}
+- Color: ${user.color}
+
+AHORA PUEDES:
+🚨 Activar alertas SOS de emergencia
+📍 Compartir tu ubicación en tiempo real
+🔔 Recibir notificaciones de otros repartidores
+👥 Conectarte con la comunidad de riders
+
+¡Bienvenido a la comunidad de Rider SOS y mantente seguro en la carretera!
+
+---
+Rider SOS - Sistema de Seguridad para Repartidores
+Este es un email automático, por favor no respondas a este mensaje.
+    `;
+  }
+
+  // Generar HTML del email de rechazo
+  generateRejectionEmailHTML(user) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Registro No Aprobado - Rider SOS</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; margin: -20px -20px 20px -20px; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { padding: 20px 0; }
+          .info-box { background: #f8f9fa; border: 1px solid #e9ecef; color: #495057; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>❌ Registro No Aprobado</h1>
+            <p>Rider SOS - Seguridad para Repartidores</p>
+          </div>
+          
+          <div class="content">
+            <h2>Hola ${user.nombre},</h2>
+            
+            <p>Lamentamos informarte que tu solicitud de registro en Rider SOS no ha sido aprobada en esta ocasión.</p>
+            
+            <div class="info-box">
+              <strong>📋 Información de tu solicitud:</strong>
+              <ul>
+                <li><strong>Nombre:</strong> ${user.nombre}</li>
+                <li><strong>Email:</strong> ${user.email}</li>
+                <li><strong>Moto:</strong> ${user.moto}</li>
+                <li><strong>Color:</strong> ${user.color}</li>
+                <li><strong>Fecha de solicitud:</strong> ${new Date(user.created_at).toLocaleDateString('es-ES')}</li>
+              </ul>
+            </div>
+            
+            <p>Si crees que esto es un error o tienes preguntas sobre tu solicitud, puedes contactar con nuestro equipo de soporte.</p>
+            
+            <p>Gracias por tu interés en Rider SOS.</p>
+          </div>
+          
+          <div class="footer">
+            <p>Rider SOS - Sistema de Seguridad para Repartidores</p>
+            <p>Este es un email automático, por favor no respondas a este mensaje.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Generar texto del email de rechazo
+  generateRejectionEmailText(user) {
+    return `
+Registro No Aprobado - Rider SOS
+Seguridad para Repartidores
+
+Hola ${user.nombre},
+
+Lamentamos informarte que tu solicitud de registro en Rider SOS no ha sido aprobada en esta ocasión.
+
+INFORMACIÓN DE TU SOLICITUD:
+- Nombre: ${user.nombre}
+- Email: ${user.email}
+- Moto: ${user.moto}
+- Color: ${user.color}
+- Fecha de solicitud: ${new Date(user.created_at).toLocaleDateString('es-ES')}
+
+Si crees que esto es un error o tienes preguntas sobre tu solicitud, puedes contactar con nuestro equipo de soporte.
+
+Gracias por tu interés en Rider SOS.
+
+---
+Rider SOS - Sistema de Seguridad para Repartidores
+Este es un email automático, por favor no respondas a este mensaje.
     `;
   }
 }
