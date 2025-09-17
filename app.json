@@ -57,15 +57,8 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#e74c3c",
-          "sounds": ["./assets/notification-sound.wav"]
-        }
       ]
+
     ]
   }
 }

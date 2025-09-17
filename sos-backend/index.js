@@ -2,9 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 require('dotenv').config();
+const http = require('http');
+const { Server } = require('socket.io');
 
 const authRoutes = require('./api/auth');
 const authService = require('./auth');
+const chatRoutes = require('./api/chat');
+const notificationsRoutes = require('./api/notifications');
+const notifications = require('./notifications');
+const database = require('./database');
 
 const app = express();
 app.use(express.json());
@@ -29,7 +35,7 @@ const notificarSOSAOtrosUsuarios = (sosData) => {
 };
 
 // Recibir ubicación/SOS
-app.post("/sos", (req, res) => {
+app.post("/sos", async (req, res) => {
   try {
     const { riderId, nombre, moto, color, ubicacion, fechaHora, tipo } = req.body;
     if (!riderId || !nombre || !moto || !color || !ubicacion || !ubicacion.lat || !ubicacion.lng || !tipo) {
@@ -65,6 +71,41 @@ app.post("/sos", (req, res) => {
         fechaHora,
         tipo
       });
+
+      // Opción A: excluir al emisor usando JWT del header Authorization
+      try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+        let emitterUserId = null;
+        if (token) {
+          const decoded = authService.verifyToken(token);
+          if (decoded?.id) emitterUserId = decoded.id;
+        }
+
+        const title = tipo === 'robo' ? '🚨 SOS ROBO' : (tipo === 'accidente' ? '🚑 SOS ACCIDENTE' : '🚨 SOS');
+        const body = `${nombre} (${moto} - ${color}) en ${Number(ubicacion.lat).toFixed(4)}, ${Number(ubicacion.lng).toFixed(4)}`;
+        const data = {
+          kind: 'sos',
+          tipo,
+          riderId,
+          nombre,
+          moto,
+          color,
+          lat: ubicacion.lat,
+          lng: ubicacion.lng,
+          fechaHora
+        };
+
+        if (emitterUserId) {
+          await notifications.sendToAllExcept(emitterUserId, title, body, data);
+        } else {
+          // Si no hay token válido, enviar a todos los tokens registrados
+          const tokens = await database.getAllTokens();
+          await notifications.sendPush(tokens, title, body, data);
+        }
+      } catch (e) {
+        console.error('Error enviando push de SOS:', e);
+      }
     }
     
     res.json({ success: true });
@@ -151,15 +192,27 @@ app.get("/alertas", (req, res) => {
 
 // Rutas de autenticación
 app.use('/auth', authRoutes);
+// Rutas de chat
+app.use('/chat', chatRoutes);
+// Rutas de notificaciones
+app.use('/notifications', notificationsRoutes);
 
 // Middleware para verificar autenticación en rutas protegidas
 app.use('/protected', authService.authenticateToken.bind(authService));
 
 const PORT = process.env.PORT || 10000;
-const HOST = process.env.HOST || '192.168.1.41';
+const HOST = process.env.HOST || '0.0.0.0'; 
 
-app.listen(PORT, HOST, () => {
+// Crear servidor HTTP y adjuntar Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*' } });
+
+// Inicializar chat en tiempo real
+require('./chat')(io);
+
+server.listen(PORT, HOST, () => {
   console.log(`🚀 Servidor Rider SOS corriendo en http://${HOST}:${PORT}`);
   console.log(`📧 Sistema de emails configurado`);
   console.log(`🔐 Autenticación JWT activa`);
+  console.log(`💬 Socket.IO listo para chat`);
 });

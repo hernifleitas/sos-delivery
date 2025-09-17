@@ -3,9 +3,10 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { getBackendURL } from "./config";
 
 export const LOCATION_TASK_NAME = "background-location-task";
-const BACKEND_URL = "http://192.168.1.41:10000/sos";
+const BACKEND_URL = `${getBackendURL()}/sos`;
 
 // Configurar notificaciones
 Notifications.setNotificationHandler({
@@ -100,8 +101,9 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   };
 
   try {
+    const authToken = await AsyncStorage.getItem('authToken');
     await axios.post(BACKEND_URL, mensajeBackend, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
       timeout: 15000, // Aumentado a 15 segundos
     });
 

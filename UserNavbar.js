@@ -14,9 +14,10 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { getBackendURL } from "./config";
 
 const { width } = Dimensions.get('window');
-const BACKEND_URL = "http://192.168.1.41:10000";
+const BACKEND_URL = getBackendURL();
 
 export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onClose }) {
   const colorScheme = useColorScheme();
