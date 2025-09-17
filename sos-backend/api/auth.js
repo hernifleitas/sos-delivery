@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authService = require('../auth');
 const emailService = require('../email');
+const database = require('../database');
 
 // Ruta de registro
 router.post('/register', async (req, res) => {
@@ -50,7 +51,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Ruta para verificar token
-router.get('/verify', authService.authenticateToken, (req, res) => {
+router.get('/verify', authService.authenticateToken.bind(authService), (req, res) => {
   res.json({
     success: true,
     user: req.user
@@ -58,7 +59,7 @@ router.get('/verify', authService.authenticateToken, (req, res) => {
 });
 
 // Ruta para actualizar perfil
-router.put('/profile', authService.authenticateToken, async (req, res) => {
+router.put('/profile', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const result = await authService.updateProfile(req.user.id, req.body);
     
@@ -77,7 +78,7 @@ router.put('/profile', authService.authenticateToken, async (req, res) => {
 });
 
 // Ruta para cambiar contraseña
-router.put('/change-password', authService.authenticateToken, async (req, res) => {
+router.put('/change-password', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
@@ -138,7 +139,7 @@ router.post('/reset-password', async (req, res) => {
 
 // Rutas de administración
 // Obtener usuarios pendientes
-router.get('/admin/pending-users', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+router.get('/admin/pending-users', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
   try {
     const result = await authService.getPendingUsers();
     res.json(result);
@@ -152,7 +153,7 @@ router.get('/admin/pending-users', authService.authenticateToken, authService.re
 });
 
 // Aprobar usuario
-router.post('/admin/approve-user/:userId', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+router.post('/admin/approve-user/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await authService.approveUser(userId);
@@ -172,7 +173,7 @@ router.post('/admin/approve-user/:userId', authService.authenticateToken, authSe
 });
 
 // Rechazar usuario
-router.post('/admin/reject-user/:userId', authService.authenticateToken, authService.requireAdmin.bind(authService), async (req, res) => {
+router.post('/admin/reject-user/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await authService.rejectUser(userId);
@@ -192,7 +193,7 @@ router.post('/admin/reject-user/:userId', authService.authenticateToken, authSer
 });
 
 // Ruta para hacer administrador (solo para desarrollo)
-router.post('/admin/make-admin/:userId', authService.authenticateToken, async (req, res) => {
+router.post('/admin/make-admin/:userId', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await database.makeAdmin(userId);
