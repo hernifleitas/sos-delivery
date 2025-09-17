@@ -3,6 +3,9 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { activarSOSDesdeNotificacion } from './backgroundConfig';
 import axios from 'axios';
+import { getBackendURL } from './config';
+
+const BACKEND_URL = getBackendURL();
 
 // Configurar categorías de notificaciones con acciones
 export const configurarCategoriasNotificaciones = async () => {
@@ -18,8 +21,8 @@ export const configurarCategoriasNotificaciones = async () => {
         },
       },
       {
-        identifier: 'SOS_PINCHAZO',
-        buttonTitle: '🛠️ SOS Pinchazo',
+        identifier: 'SOS_ACCIDENTE',
+        buttonTitle: '🛠️ SOS ACCIDENTE',
         options: {
           isDestructive: false,
           isAuthenticationRequired: false,
@@ -86,9 +89,9 @@ export const manejarRespuestaNotificacion = async (response) => {
           console.log('Activando SOS Robo desde notificación');
           await activarSOSDesdeNotificacion('robo');
           break;
-        case 'SOS_PINCHAZO':
-          console.log('Activando SOS Pinchazo desde notificación');
-          await activarSOSDesdeNotificacion('pinchazo');
+        case 'SOS_ACCIDENTE':
+          console.log('Activando SOS ACCIDENTE desde notificación');
+          await activarSOSDesdeNotificacion('accidente');
           break;
         case 'CANCELAR_SOS':
           console.log('Cancelando SOS desde notificación');
@@ -103,7 +106,8 @@ export const manejarRespuestaNotificacion = async (response) => {
             const color = (await AsyncStorage.getItem('color')) || 'No especificado';
             const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
             const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-            await axios.post('http://192.168.1.41:10000/sos', {
+            const authToken = await AsyncStorage.getItem('authToken');
+            await axios.post(`${BACKEND_URL}/sos`, {
               riderId,
               nombre,
               moto,
@@ -113,7 +117,7 @@ export const manejarRespuestaNotificacion = async (response) => {
               tipo: 'normal',
             }, {
               timeout: 10000,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
             });
           } catch (e) {
             console.log('No se pudo enviar estado normal al cancelar:', e?.message);
@@ -135,7 +139,8 @@ export const manejarRespuestaNotificacion = async (response) => {
             const color = (await AsyncStorage.getItem('color')) || 'No especificado';
             const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
             const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-            await axios.post('http://192.168.1.41:10000/sos', {
+            const authToken2 = await AsyncStorage.getItem('authToken');
+            await axios.post(`${BACKEND_URL}/sos`, {
               riderId,
               nombre,
               moto,
@@ -143,6 +148,8 @@ export const manejarRespuestaNotificacion = async (response) => {
               ubicacion,
               fechaHora: new Date().toISOString(),
               tipo: 'normal',
+            }, {
+              headers: { ...(authToken2 ? { Authorization: `Bearer ${authToken2}` } : {}) }
             });
           } catch (e) {}
           break;

@@ -14,7 +14,11 @@ import LoginScreen from "./LoginScreen";
 import RegisterScreen from "./RegisterScreen";
 import UserNavbar from "./UserNavbar";
 import AdminPanel from "./AdminPanel";
+import MainMenu from "./MainMenu";
+import PremiumPaywall from "./PremiumPaywall";
+import ChatScreen from "./ChatScreen";
 import { getBackendURL } from "./config";
+import { registerForPushNotificationsAsync, sendPushTokenToBackend } from "./services/NotificationsService";
 
 const BACKEND_URL = getBackendURL();
 
@@ -29,6 +33,10 @@ export default function App() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showMainMenu, setShowMainMenu] = useState(false);
+  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [isPremium, setIsPremium] = useState(true); // TODO: actualizar desde backend/billing
   
   // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
@@ -124,6 +132,20 @@ export default function App() {
     const subscription = Notifications.addNotificationResponseReceivedListener(manejarRespuestaNotificacion);
     return () => subscription?.remove();
   }, []);
+
+  // Registro de push tokens cuando el usuario inicia sesión
+  useEffect(() => {
+    (async () => {
+      try {
+        if (isLoggedIn && user?.id) {
+          const token = await registerForPushNotificationsAsync();
+          if (token) await sendPushTokenToBackend(token);
+        }
+      } catch (e) {
+        console.warn('No se pudo registrar push token:', e?.message);
+      }
+    })();
+  }, [isLoggedIn, user?.id]);
 
   // Función para activar SOS desde segundo plano
   const activarSOSBackground = async (tipo = 'robo') => {
@@ -343,6 +365,7 @@ export default function App() {
       const fechaHora = new Date().toISOString();
       const colorFinal = (user?.color || "No especificado").trim();
 
+      const authToken = await AsyncStorage.getItem('authToken');
       await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre: user?.nombre || "Usuario",
@@ -356,7 +379,7 @@ export default function App() {
         tipo: "normal", // Tipo normal para bandera verde
       }, {
         timeout: 15000,
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
       });
 
       console.log(`Estado normal enviado:`, fechaHora);
@@ -378,6 +401,7 @@ export default function App() {
       const colorFinal = (user?.color || "No especificado").trim();
       const tipo = tipoSOS || (await AsyncStorage.getItem("tipoSOS")) || "robo";
 
+      const authToken2 = await AsyncStorage.getItem('authToken');
       await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre: user?.nombre || "Usuario",
@@ -390,8 +414,7 @@ export default function App() {
         fechaHora,
         tipo,
       }, {
-        timeout: 15000,
-        headers: { "Content-Type": "application/json" }
+        headers: { ...(authToken2 ? { Authorization: `Bearer ${authToken2}` } : {}) }
       });
 
       console.log(`Ubicación enviada (${tipo}):`, fechaHora);
@@ -445,53 +468,76 @@ export default function App() {
 
   return (
     <View style={dynamicStyles.container}>
+      {/* Menú principal (Navbar) */}
+      <MainMenu
+        visible={showMainMenu}
+        onClose={() => setShowMainMenu(false)}
+        isAdmin={isAdmin}
+        trackingActivo={trackingActivo}
+        onQuickNotifications={enviarNotificacionConAcciones}
+        onToggleTracking={toggleTracking}
+        onOpenAdmin={() => {
+          setShowMainMenu(false);
+          setShowAdminPanel(true);
+        }}
+        onOpenChat={() => {
+          setShowMainMenu(false);
+          if (isPremium) {
+            setShowChat(true);
+          } else {
+            setShowPremiumPaywall(true);
+          }
+        }}
+      />
+
+      {/* Paywall Premium */}
+      <PremiumPaywall
+        visible={showPremiumPaywall}
+        onClose={() => setShowPremiumPaywall(false)}
+        onSubscribe={() => {
+          setShowPremiumPaywall(false);
+          // TODO: abrir flujo de suscripción (Stripe/IAP)
+          Alert.alert('Próximamente', 'El flujo de suscripción Premium estará disponible pronto.');
+        }}
+      />
+
+      {/* Chat Premium (base) */}
+      <ChatScreen
+        visible={showChat}
+        onClose={() => setShowChat(false)}
+        isPremium={isPremium}
+        isAdmin={isAdmin}
+        currentUserId={user?.id}
+        onUpgrade={() => {
+          setShowChat(false);
+          setShowPremiumPaywall(true);
+        }}
+      />
+
       {/* Barra superior fija con botones */}
       <View style={styles.topBar}>
         <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
         <View style={styles.topButtons}>
-          <TouchableOpacity 
-            style={[styles.topButton, { backgroundColor: trackingActivo ? "#e74c3c" : "#27ae60" }]}
-            onPress={toggleTracking}
+          {/* Botón único para abrir el menú principal */}
+          <TouchableOpacity
+            style={[styles.topButton, { backgroundColor: '#8e44ad' }]}
+            onPress={() => setShowMainMenu(true)}
           >
-            <Text style={styles.topButtonText}>
-              {trackingActivo ? "🔴" : "🟢"}
-            </Text>
+            <Text style={styles.topButtonText}>☰</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.topButton, { backgroundColor: "#8e44ad" }]}
-            onPress={enviarNotificacionConAcciones}
-          >
-            <Text style={styles.topButtonText}>🚨</Text>
-          </TouchableOpacity>
-          
-          {/* Botón de administrador - Solo para administradores */}
-          {isAdmin && (
-            <TouchableOpacity 
-              style={[styles.topButton, { backgroundColor: "#8e44ad" }]}
-              onPress={() => {
-                // Abrir panel de administrador
-                setShowAdminPanel(true);
-              }}
-            >
-              <Text style={styles.topButtonText}>⚙️</Text>
-            </TouchableOpacity>
-          )}
-          
+
           {/* Botón de perfil */}
           <TouchableOpacity 
             style={[styles.topButton, { backgroundColor: "#34495e" }]}
             onPress={() => {
-              // Abrir navbar de usuario
               setShowUserMenu(true);
             }}
           >
             <Text style={styles.topButtonText}>👤</Text>
           </TouchableOpacity>
         </View>
-
       </View>
-      
+
       {/* Navbar de usuario */}
       <UserNavbar 
         user={user} 
