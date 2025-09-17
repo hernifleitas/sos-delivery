@@ -153,7 +153,7 @@ app.get("/alertas", (req, res) => {
 app.use('/auth', authRoutes);
 
 // Middleware para verificar autenticación en rutas protegidas
-app.use('/protected', authService.authenticateToken);
+app.use('/protected', authService.authenticateToken.bind(authService));
 
 const PORT = process.env.PORT || 10000;
 const HOST = process.env.HOST || '192.168.1.41';

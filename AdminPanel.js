@@ -12,8 +12,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { getBackendURL } from "./config";
 
-const BACKEND_URL = "http://192.168.1.41:10000";
+const BACKEND_URL = getBackendURL();
 
 export default function AdminPanel({ onClose }) {
   const colorScheme = useColorScheme();

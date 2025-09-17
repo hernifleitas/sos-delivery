@@ -14,6 +14,9 @@ import LoginScreen from "./LoginScreen";
 import RegisterScreen from "./RegisterScreen";
 import UserNavbar from "./UserNavbar";
 import AdminPanel from "./AdminPanel";
+import { getBackendURL } from "./config";
+
+const BACKEND_URL = getBackendURL();
 
 export default function App() {
   const colorScheme = useColorScheme();
@@ -37,6 +40,7 @@ export default function App() {
   const timeoutSOS = useRef(null); // contador de 10 segundos
 
   useEffect(() => {
+
     const cargarDatos = async () => {
       // Limpiar notificaciones pendientes que puedan causar alertas automáticas
       await limpiarNotificacionesPendientes();
@@ -60,7 +64,7 @@ export default function App() {
         if (authToken) {
           (async () => {
             try {
-              const response = await axios.get("http://192.168.1.41:10000/auth/verify", {
+              const response = await axios.get(`${BACKEND_URL}/auth/verify`, {
                 headers: { 'Authorization': `Bearer ${authToken}` },
                 timeout: 10000
               });
@@ -81,6 +85,7 @@ export default function App() {
 
       // Cargar estados de SOS y tracking solo si está logueado
       if (userLoggedIn === "true" && userData && authToken) {
+        await checkAdminStatus();
         const sos = await AsyncStorage.getItem("sosActivo");
         const tipo = await AsyncStorage.getItem("tipoSOS");
         if (sos === "true") {
@@ -225,31 +230,38 @@ export default function App() {
   const checkAdminStatus = async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        const response = await axios.get(`${BACKEND_URL}/auth/verify`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-          timeout: 10000
-        });
-        
-        if (response.data.success) {
-          // Verificar si el usuario es administrador
-          const adminResponse = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-            timeout: 10000
-          });
-          setIsAdmin(true);
-        }
+      if (!token) {
+        setIsAdmin(false);
+        return;
       }
-    } catch (error) {
-      // Si hay error 403, significa que no es administrador
-      if (error.response?.status === 403) {
-        setIsAdmin(false);
+  
+      // Hacemos la petición al endpoint de admin
+      const response = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+  
+      // Si obtenemos status 200 y la respuesta tiene datos, es admin
+      if (response.status === 200) {
+        setIsAdmin(true);
+        console.log("Usuario con rol ADMIN detectado");
       } else {
-        console.error('Error verificando estado de administrador:', error);
         setIsAdmin(false);
+      }
+  
+    } catch (err) {
+      // Si da 403 significa que no es admin
+      if (err.response?.status === 403) {
+        setIsAdmin(false);
+        console.log("Usuario NO es admin (403)");
+      } else {
+        // Otros errores de red o servidor
+        setIsAdmin(false);
+        console.error("Error verificando admin:", err.message);
       }
     }
   };
+  
 
   const activarSOS = async (tipo) => {
     if(sosActivo) return;
@@ -331,7 +343,7 @@ export default function App() {
       const fechaHora = new Date().toISOString();
       const colorFinal = (user?.color || "No especificado").trim();
 
-      await axios.post("http://192.168.1.41:10000/sos", {
+      await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre: user?.nombre || "Usuario",
         moto: user?.moto || "No especificado",
@@ -366,7 +378,7 @@ export default function App() {
       const colorFinal = (user?.color || "No especificado").trim();
       const tipo = tipoSOS || (await AsyncStorage.getItem("tipoSOS")) || "robo";
 
-      await axios.post("http://192.168.1.41:10000/sos", {
+      await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre: user?.nombre || "Usuario",
         moto: user?.moto || "No especificado",
@@ -387,7 +399,7 @@ export default function App() {
       console.error("Error enviando SOS:", err.message);
       Alert.alert(
         "Error de Conexión", 
-        "No se pudo enviar el SOS. Verifica que:\n• El backend esté funcionando\n• Tu conexión a internet\n• La IP 192.168.1.41 sea correcta"
+        "No se pudo enviar el SOS. Verifica que:\n• El backend esté funcionando\n• Tu conexión a internet\n• La IP sea correcta"
       );
     }
   };
@@ -697,4 +709,3 @@ const styles = StyleSheet.create({
     marginTop: 80 // Espacio para la barra superior
   }
 });
-
