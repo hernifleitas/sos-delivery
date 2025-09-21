@@ -162,7 +162,7 @@ export default function SplashScreen({ onNavigate }) {
         <Text style={dynamicStyles.title}>Rider SOS</Text>
         <Text style={dynamicStyles.subtitle}>Seguridad para Repartidores</Text>
         <Text style={dynamicStyles.description}>
-          Mantente seguro mientras trabajas. Alertas SOS en tiempo real, 
+          Mantenete seguro mientras trabajás. Alertas SOS en tiempo real, 
           seguimiento de ubicación y notificaciones de emergencia.
         </Text>
       </Animated.View>

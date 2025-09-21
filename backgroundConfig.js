@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { iniciarUbicacionBackground } from './tasks';
+import { getBackendURL } from './config';
 
 // Configuración de notificaciones para background
 export const configurarNotificaciones = async () => {
@@ -148,15 +149,9 @@ export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
     
     console.log(`SOS ${tipo} activado desde segundo plano - RiderID: ${riderId}`);
     
-    // Programar envío inmediato de ubicación
-    setTimeout(async () => {
-      await enviarUbicacionInmediata(tipo);
-    }, 5000); // Enviar en 5 segundos
-    
-    // Iniciar intervalo de envío cada 2 minutos
-    setTimeout(async () => {
-      await iniciarIntervaloSOSBackground(tipo);
-    }, 10000); // Iniciar intervalo después de 10 segundos
+    // Enviar inmediatamente y comenzar intervalo sin esperas
+    await enviarUbicacionInmediata(tipo);
+    await iniciarIntervaloSOSBackground(tipo);
     
     return true;
   } catch (error) {
@@ -169,6 +164,14 @@ export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
 const enviarUbicacionInmediata = async (tipo) => {
   try {
     const axios = require('axios');
+    // Guardas de Modo Invisible: no enviar si no hay SOS activo
+    const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
+    const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
+    if (invisible && !sosActivoFlag) {
+      console.log('Modo Invisible activo (background): no se envía ubicación (sin SOS).');
+      return;
+    }
+ 
     const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
     let ubicacion = { lat: 0, lng: 0 };
     if (ubicacionString) ubicacion = JSON.parse(ubicacionString);
@@ -179,8 +182,10 @@ const enviarUbicacionInmediata = async (tipo) => {
     const color = await AsyncStorage.getItem('color') || 'No especificado';
 
     const fechaHora = new Date().toISOString();
+    // Usar el tipo SOS guardado como fuente de verdad
+    const tipoSOS = (await AsyncStorage.getItem('tipoSOS')) || tipo || 'normal';
 
-    await axios.post("http://192.168.1.41:10000/sos", {
+    await axios.post(`${getBackendURL()}/sos`, {
       riderId,
       nombre,
       moto,
@@ -190,7 +195,9 @@ const enviarUbicacionInmediata = async (tipo) => {
         lng: ubicacion.lng ?? 0
       },
       fechaHora,
-      tipo,
+      // Enviar SIEMPRE el tipo SOS real
+      tipo: tipoSOS,
+      tipoSOSActual: tipoSOS,
     });
 
     await AsyncStorage.setItem("sosEnviado", "true");
@@ -326,35 +333,29 @@ export const manejarCicloVidaApp = {
     if (nextAppState === 'background') {
       console.log('App en segundo plano');
       
-      // Verificar si ya se envió la notificación de background
-      const notificacionEnviada = await AsyncStorage.getItem('notificacionBackgroundEnviada');
-      if (notificacionEnviada !== 'true') {
+      // Enviar una sola vez (de por vida) la notificación de background
+      const bgOnce = await AsyncStorage.getItem('notificacionBackgroundOnce');
+      if (bgOnce !== 'true') {
         await enviarNotificacionEstado(
           'SOS Activo',
           'La aplicación continúa funcionando en segundo plano'
         );
-        await AsyncStorage.setItem('notificacionBackgroundEnviada', 'true');
+        await AsyncStorage.setItem('notificacionBackgroundOnce', 'true');
       }
       
-      // Enviar notificación de acceso rápido después de 30 segundos (solo una vez)
+      // Enviar notificación de acceso rápido solo una vez de por vida
       setTimeout(async () => {
         const sosActivo = await AsyncStorage.getItem('sosActivo');
-        const notificacionAccesoEnviada = await AsyncStorage.getItem('notificacionAccesoEnviada');
-        if (sosActivo !== 'true' && notificacionAccesoEnviada !== 'true') {
+        const accessOnce = await AsyncStorage.getItem('notificacionAccesoOnce');
+        if (sosActivo !== 'true' && accessOnce !== 'true') {
           await enviarNotificacionSOS();
-          await AsyncStorage.setItem('notificacionAccesoEnviada', 'true');
+          await AsyncStorage.setItem('notificacionAccesoOnce', 'true');
         }
       }, 30000);
       
     } else if (nextAppState === 'active') {
       console.log('App activa');
-      // Resetear flags de notificaciones cuando la app vuelve a estar activa
-      await AsyncStorage.removeItem('notificacionBackgroundEnviada');
-      await AsyncStorage.removeItem('notificacionAccesoEnviada');
-      
-      // Limpiar notificaciones pendientes que puedan causar alertas automáticas
-      await limpiarNotificacionesPendientes();
-      
+      // Ya no limpiamos flags para evitar spam. Solo optimizamos.
       await optimizarRendimientoBackground();
     }
   }

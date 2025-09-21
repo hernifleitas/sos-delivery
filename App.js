@@ -37,6 +37,7 @@ export default function App() {
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [isPremium, setIsPremium] = useState(true); // TODO: actualizar desde backend/billing
+  const [invisibleMode, setInvisibleMode] = useState(false);
   
   // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
@@ -88,19 +89,28 @@ export default function App() {
           })();
         }
       } else {
-        setCurrentScreen('splash');
+        // No forzar navegación a 'splash' aquí para no romper cuando el usuario abre 'login' o 'register' manualmente
       }
 
       // Cargar estados de SOS y tracking solo si está logueado
       if (userLoggedIn === "true" && userData && authToken) {
         await checkAdminStatus();
+        // Cargar modo invisible
+        try {
+          const inv = await AsyncStorage.getItem('invisibleMode');
+          setInvisibleMode(inv === 'true');
+        } catch (_) {}
         const sos = await AsyncStorage.getItem("sosActivo");
         const tipo = await AsyncStorage.getItem("tipoSOS");
         if (sos === "true") {
           setSosActivo(true);
           setTipoSOS(tipo || "robo");
-          setContador(10);
-          timeoutSOS.current = setTimeout(() => iniciarIntervaloSOS(), 10000);
+          setContador(0);
+          // Enviar inmediatamente y programar intervalo sin esperar 10s
+          await enviarUbicacionSOS();
+          if (!intervaloSOS.current) {
+            intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
+          }
         }
 
         // Verificar estado del tracking
@@ -154,11 +164,12 @@ export default function App() {
       if (activado) {
         setSosActivo(true);
         setTipoSOS(tipo);
-        setContador(10);
-        
-        // Iniciar el envío automático
-        timeoutSOS.current = setTimeout(() => iniciarIntervaloSOS(), 10000);
-        
+        setContador(0);
+        // Enviar inmediatamente y programar intervalo
+        await enviarUbicacionSOS();
+        if (!intervaloSOS.current) {
+          intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
+        }
         Alert.alert("SOS Activado", `Alerta de ${tipo} activada desde segundo plano`);
       }
     } catch (error) {
@@ -195,10 +206,26 @@ export default function App() {
     // Guardar datos del usuario
     await AsyncStorage.setItem("usuario", JSON.stringify(userData));
     await AsyncStorage.setItem("userLoggedIn", "true");
-    await AsyncStorage.setItem("authToken", userData.token);
+    // No sobrescribir el token aquí: LoginScreen ya guardó response.data.token correctamente
+    // Si viene un token válido en userData.token, opcionalmente actualizarlo sin borrar el anterior
+    if (userData?.token) {
+      await AsyncStorage.setItem("authToken", userData.token);
+    }
+    // Persistir campos de rider usados por background/tasks
+    if (userData?.nombre) await AsyncStorage.setItem('nombre', userData.nombre);
+    if (userData?.moto) await AsyncStorage.setItem('moto', userData.moto);
+    if (userData?.color) await AsyncStorage.setItem('color', userData.color);
     
     // Verificar si es administrador
     await checkAdminStatus();
+
+    // Registrar token de notificaciones push inmediatamente tras login
+    try {
+      const ptoken = await registerForPushNotificationsAsync();
+      if (ptoken) await sendPushTokenToBackend(ptoken);
+    } catch (e) {
+      console.warn('No se pudo registrar token push post-login:', e?.message);
+    }
   };
 
   const handleRegisterSuccess = async (userData) => {
@@ -209,7 +236,29 @@ export default function App() {
     // Guardar datos del usuario
     await AsyncStorage.setItem("usuario", JSON.stringify(userData));
     await AsyncStorage.setItem("userLoggedIn", "true");
-    await AsyncStorage.setItem("authToken", userData.token);
+    if (userData?.token) {
+      await AsyncStorage.setItem("authToken", userData.token);
+    }
+    // Persistir campos de rider para background/tasks
+    if (userData?.nombre) await AsyncStorage.setItem('nombre', userData.nombre);
+    if (userData?.moto) await AsyncStorage.setItem('moto', userData.moto);
+    if (userData?.color) await AsyncStorage.setItem('color', userData.color);
+
+    // Registrar token de notificaciones push inmediatamente tras registro
+    try {
+      const ptoken = await registerForPushNotificationsAsync();
+      if (ptoken) await sendPushTokenToBackend(ptoken);
+    } catch (e) {
+      console.warn('No se pudo registrar token push post-registro:', e?.message);
+    }
+  };
+
+  const handleUpdateUser = (updatedUser) => {
+    setUser(updatedUser);
+    // Sincronizar cambios con AsyncStorage para que tareas usen datos reales
+    if (updatedUser?.nombre) AsyncStorage.setItem('nombre', updatedUser.nombre);
+    if (updatedUser?.moto) AsyncStorage.setItem('moto', updatedUser.moto);
+    if (updatedUser?.color) AsyncStorage.setItem('color', updatedUser.color);
   };
 
   const handleLogout = async () => {
@@ -243,10 +292,6 @@ export default function App() {
     // Detener tracking
     await detenerUbicacionBackground();
     setTrackingActivo(false);
-  };
-
-  const handleUpdateUser = (updatedUser) => {
-    setUser(updatedUser);
   };
 
   const checkAdminStatus = async () => {
@@ -289,8 +334,7 @@ export default function App() {
     if(sosActivo) return;
     setTipoSOS(tipo);
     setSosActivo(true);
-    setContador(10);
-
+    setContador(0);
     // Generar riderId si no existe
     let riderId = await AsyncStorage.getItem("riderId");
     if (!riderId) {
@@ -313,31 +357,56 @@ export default function App() {
     if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
     if (intervaloSOS.current) clearInterval(intervaloSOS.current);
 
-    // Timeout de 10s para enviar primer SOS
-    timeoutSOS.current = setTimeout(() => iniciarIntervaloSOS(), 10000);
+    // Enviar inmediatamente y programar intervalo (sin esperar 10s)
+    await enviarUbicacionSOS();
+    if (!intervaloSOS.current) {
+      intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
+    }
   };
 
   const cancelarSOS = async () => {
-    setSosActivo(false);
-    setTipoSOS("");
-    setContador(0);
+    try {
+      // Actualizar UI y flags primero
+      setSosActivo(false);
+      setTipoSOS("");
+      setContador(0);
+      await AsyncStorage.setItem("sosActivo", "false");
+      await AsyncStorage.setItem("sosEnviado", "false");
+      await AsyncStorage.removeItem("tipoSOS");
 
-    // Limpiar timeout e intervalos
-    if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
-    if (intervaloSOS.current) clearInterval(intervaloSOS.current);
+      // Datos para enviar 'normal'
+      const BACKEND_URL = getBackendURL();
+      const riderId = (await AsyncStorage.getItem("riderId")) || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await AsyncStorage.setItem("riderId", riderId);
+      const nombre = (await AsyncStorage.getItem("nombre")) || "Usuario";
+      const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
+      let color = (await AsyncStorage.getItem("color")) || "No especificado";
+      color = color.trim() !== "" ? color : "No especificado";
+      const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
+      const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+      const fechaHora = new Date().toISOString();
 
-    // Marcar como cancelado y enviar estado "normal" por unos minutos
-    await AsyncStorage.setItem("sosActivo", "false");
-    await AsyncStorage.setItem("sosEnviado", "true");
-    await AsyncStorage.setItem("sosCancelado", "true");
-    await AsyncStorage.setItem("sosCanceladoTimestamp", Date.now().toString());
-    await AsyncStorage.removeItem("sosInicio");
-    await AsyncStorage.removeItem("contadorActualizaciones");
+      // Forzar envío 'normal' (NO aplicar guardas)
+      const authToken = await AsyncStorage.getItem('authToken');
+      await axios.post(`${BACKEND_URL}/sos`, {
+        riderId,
+        nombre,
+        moto,
+        color,
+        ubicacion: { lat: ubicacion.lat ?? 0, lng: ubicacion.lng ?? 0 },
+        fechaHora,
+        tipo: "normal",
+        cancel: true,
+      }, {
+        timeout: 15000,
+        headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
+      });
 
-    // Enviar estado "normal" (bandera verde) por unos minutos
-    await enviarEstadoNormal();
-
-    Alert.alert("Cancelada", `La alerta de ${tipoSOS} fue cancelada.`);
+      console.log('SOS cancelado: estado normal enviado');
+    } catch (err) {
+      console.error('Error cancelando SOS:', err?.message);
+      Alert.alert('Error', 'No se pudo cancelar el SOS. Revisa tu conexión e intenta nuevamente.');
+    }
   };
 
   const toggleTracking = async () => {
@@ -355,6 +424,21 @@ export default function App() {
     }
   };
 
+  // Alternar Modo Invisible (no envía ubicación al backend desde background)
+  const toggleInvisibleMode = async () => {
+    try {
+      const next = !invisibleMode;
+      setInvisibleMode(next);
+      await AsyncStorage.setItem('invisibleMode', next ? 'true' : 'false');
+      Alert.alert(
+        next ? 'Modo Invisible Activado' : 'Modo Invisible Desactivado',
+        next ? 'No se enviará tu ubicación al backend mientras esté activo.' : 'Se reanuda el envío de ubicación en segundo plano.'
+      );
+    } catch (e) {
+      console.warn('No se pudo alternar modo invisible:', e?.message);
+    }
+  };
+
   const enviarEstadoNormal = async () => {
     try {
       const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
@@ -366,23 +450,26 @@ export default function App() {
       const colorFinal = (user?.color || "No especificado").trim();
 
       const authToken = await AsyncStorage.getItem('authToken');
-      await axios.post(`${BACKEND_URL}/sos`, {
-        riderId,
-        nombre: user?.nombre || "Usuario",
-        moto: user?.moto || "No especificado",
-        color: colorFinal,
-        ubicacion: {
-          lat: ubicacion.lat ?? 0,
-          lng: ubicacion.lng ?? 0
-        },
-        fechaHora,
-        tipo: "normal", // Tipo normal para bandera verde
-      }, {
-        timeout: 15000,
-        headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
-      });
-
-      console.log(`Estado normal enviado:`, fechaHora);
+      const sosEnviadoFlag = await AsyncStorage.getItem('sosEnviado');
+      if (sosEnviadoFlag !== 'true') {
+        await axios.post(`${BACKEND_URL}/sos`, {
+          riderId,
+          nombre: user?.nombre || "Usuario",
+          moto: user?.moto || "No especificado",
+          color: colorFinal,
+          ubicacion: {
+            lat: ubicacion.lat ?? 0,
+            lng: ubicacion.lng ?? 0
+          },
+          fechaHora,
+          tipo: "normal", // Tipo normal para bandera verde
+        }, {
+          timeout: 15000,
+          headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
+        });
+      } else {
+        console.log('Se omite envío tipo normal: hay SOS activo.');
+      }
     } catch (err) {
       console.error("Error enviando estado normal:", err.message);
     }
@@ -395,29 +482,37 @@ export default function App() {
       let ubicacion = { lat: 0, lng: 0 };
       if (ubicacionString) ubicacion = JSON.parse(ubicacionString);
 
-      const riderId = await AsyncStorage.getItem("riderId");
+      // Respeto de Modo Invisible: no enviar si no hay SOS activo
+      const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
+      const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
+      if (invisible && !sosActivoFlag) {
+        console.log('Modo Invisible activo (foreground): no se envía ubicación (sin SOS).');
+        return;
+      }
 
+      // Usar el tipo SOS real guardado como fuente de verdad
+      const tipoSOSGuardado = (await AsyncStorage.getItem("tipoSOS")) || tipoSOS || "normal";
+
+      const riderId = await AsyncStorage.getItem("riderId");
       const fechaHora = new Date().toISOString();
       const colorFinal = (user?.color || "No especificado").trim();
-      const tipo = tipoSOS || (await AsyncStorage.getItem("tipoSOS")) || "robo";
 
-      const authToken2 = await AsyncStorage.getItem('authToken');
+      const authToken = await AsyncStorage.getItem('authToken');
       await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre: user?.nombre || "Usuario",
         moto: user?.moto || "No especificado",
         color: colorFinal,
-        ubicacion: {
-          lat: ubicacion.lat ?? 0,
-          lng: ubicacion.lng ?? 0
-        },
+        ubicacion,
         fechaHora,
-        tipo,
+        // Enviar SIEMPRE el tipo SOS real en cada actualización
+        tipo: tipoSOSGuardado,
+        tipoSOSActual: tipoSOSGuardado,
       }, {
-        headers: { ...(authToken2 ? { Authorization: `Bearer ${authToken2}` } : {}) }
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
 
-      console.log(`Ubicación enviada (${tipo}):`, fechaHora);
+      console.log(`Ubicación enviada (${tipoSOSGuardado}):`, fechaHora);
     } catch (err) {
       console.error("Error enviando SOS:", err.message);
       Alert.alert(
@@ -476,6 +571,8 @@ export default function App() {
         trackingActivo={trackingActivo}
         onQuickNotifications={enviarNotificacionConAcciones}
         onToggleTracking={toggleTracking}
+        isInvisible={invisibleMode}
+        onToggleInvisible={toggleInvisibleMode}
         onOpenAdmin={() => {
           setShowMainMenu(false);
           setShowAdminPanel(true);
@@ -516,7 +613,14 @@ export default function App() {
 
       {/* Barra superior fija con botones */}
       <View style={styles.topBar}>
-        <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
+          {invisibleMode && (
+            <View style={styles.invisibleBadge}>
+              <Text style={styles.invisibleBadgeText}>👻 Invisible</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.topButtons}>
           {/* Botón único para abrir el menú principal */}
           <TouchableOpacity
@@ -753,5 +857,16 @@ const styles = StyleSheet.create({
   mapContainer: {
     flex: 1,
     marginTop: 80 // Espacio para la barra superior
-  }
+  },
+  invisibleBadge: {
+    backgroundColor: '#2d3436',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  invisibleBadgeText: {
+    color: '#ecf0f1',
+    fontSize: 12,
+    fontWeight: '600'
+  },
 });

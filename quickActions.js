@@ -97,7 +97,7 @@ export const manejarRespuestaNotificacion = async (response) => {
           console.log('Cancelando SOS desde notificación');
           // Cancelar cualquier SOS activo
           await AsyncStorage.setItem('sosActivo', 'false');
-          await AsyncStorage.setItem('sosEnviado', 'true');
+          await AsyncStorage.setItem('sosEnviado', 'false');
           // Enviar estado normal al backend para limpiar alerta
           try {
             const riderId = await AsyncStorage.getItem('riderId');
@@ -107,6 +107,7 @@ export const manejarRespuestaNotificacion = async (response) => {
             const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
             const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
             const authToken = await AsyncStorage.getItem('authToken');
+            // Cancelación explícita: SIEMPRE enviar 'normal' para limpiar alerta
             await axios.post(`${BACKEND_URL}/sos`, {
               riderId,
               nombre,
@@ -115,6 +116,7 @@ export const manejarRespuestaNotificacion = async (response) => {
               ubicacion,
               fechaHora: new Date().toISOString(),
               tipo: 'normal',
+              cancel: true,
             }, {
               timeout: 10000,
               headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
@@ -140,6 +142,7 @@ export const manejarRespuestaNotificacion = async (response) => {
             const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
             const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
             const authToken2 = await AsyncStorage.getItem('authToken');
+            // Cancelación explícita: SIEMPRE enviar 'normal' para limpiar alerta
             await axios.post(`${BACKEND_URL}/sos`, {
               riderId,
               nombre,
@@ -148,6 +151,7 @@ export const manejarRespuestaNotificacion = async (response) => {
               ubicacion,
               fechaHora: new Date().toISOString(),
               tipo: 'normal',
+              cancel: true,
             }, {
               headers: { ...(authToken2 ? { Authorization: `Bearer ${authToken2}` } : {}) }
             });
@@ -167,7 +171,7 @@ const cancelarSOSDesdeNotificacion = async () => {
   try {
     // Cancelar SOS
     await AsyncStorage.setItem('sosActivo', 'false');
-    await AsyncStorage.setItem('sosEnviado', 'true');
+    await AsyncStorage.setItem('sosEnviado', 'false');
     await AsyncStorage.setItem('sosCancelado', 'true');
     await AsyncStorage.setItem('sosCanceladoTimestamp', Date.now().toString());
     await AsyncStorage.removeItem('sosInicio');

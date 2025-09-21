@@ -2,15 +2,15 @@
 export const CONFIG = {
   // URLs del backend
   BACKEND_URL: __DEV__ 
-    ? 'http://192.168.1.41:10000'  // Desarrollo
-    : 'https://tu-dominio.com',     // Producción
+    ? 'https://sos-backend-1.onrender.com'  // Desarrollo
+    : 'https://sos-backend-1.onrender.com',     // Producción
     
   // Timeouts
   API_TIMEOUT: 15000,
   
   // Intervalos
   LOCATION_INTERVAL: 2 * 60 * 1000, // 2 minutos para SOS
-  MAP_UPDATE_INTERVAL: 30000,        // 30 segundos para mapa
+  MAP_UPDATE_INTERVAL: 5000,        // 30 segundos para mapa
   ALERTAS_UPDATE_INTERVAL: 10000,    // 10 segundos para alertas
   
   // Configuración de notificaciones

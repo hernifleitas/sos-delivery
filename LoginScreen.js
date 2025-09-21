@@ -14,8 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-
-const BACKEND_URL = "http://192.168.1.41:10000";
+import { getBackendURL } from "./config";
 
 export default function LoginScreen({ onLoginSuccess, onNavigate }) {
   const colorScheme = useColorScheme();
@@ -216,6 +215,8 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
     },
   });
 
+  const BASE_URL = getBackendURL();
+
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Por favor completa todos los campos");
@@ -230,7 +231,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/auth/login`, {
+      const response = await axios.post(`${BASE_URL}/auth/login`, {
         email: email.toLowerCase().trim(),
         password: password
       }, {
@@ -278,7 +279,8 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
       console.error("Error status:", error.response?.status);
       
       if (error.response?.status === 401) {
-        Alert.alert("Error", "Email o contraseña incorrectos");
+        const backendMsg = error.response?.data?.message;
+        Alert.alert("Error", backendMsg || "Email o contraseña incorrectos");
       } else if (error.response?.status === 404) {
         Alert.alert("Error", "Usuario no encontrado");
       } else if (error.response?.status === 400) {
@@ -313,7 +315,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
     setResetMessage("");
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/auth/request-password-reset`, {
+      const response = await axios.post(`${BASE_URL}/auth/request-password-reset`, {
         email: resetEmail.toLowerCase().trim()
       }, {
         timeout: 10000,
@@ -506,4 +508,3 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
     </KeyboardAvoidingView>
   );
 }
-

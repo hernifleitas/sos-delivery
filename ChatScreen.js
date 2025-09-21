@@ -1,6 +1,6 @@
 // ChatScreen.js
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Modal, StyleSheet, FlatList, TextInput, TouchableOpacity, useColorScheme, Alert } from 'react-native';
+import { View, Text, Modal, StyleSheet, FlatList, TextInput, TouchableOpacity, useColorScheme, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import ChatService from './services/ChatService';
 
 export default function ChatScreen({ visible, onClose, isPremium = false, isAdmin = false, currentUserId, onUpgrade }) {
@@ -95,7 +95,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
   const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: isDarkMode ? '#0e0e0e' : '#f6f7f8' },
     header: {
-      height: 56,
+      height: 52,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -132,14 +132,16 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     inputBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 10,
+      paddingHorizontal: 10,
+      paddingTop: 10,
+      paddingBottom: Platform.OS === 'android' ? 16 : 12,
       borderTopWidth: 1,
       borderTopColor: isDarkMode ? '#222' : '#eaeaea',
       backgroundColor: isDarkMode ? '#121212' : '#ffffff'
     },
     input: {
       flex: 1,
-      height: 42,
+      height: 40,
       borderWidth: 1,
       borderColor: isDarkMode ? '#333' : '#dcdde1',
       backgroundColor: isDarkMode ? '#1d1d1d' : '#fff',
@@ -148,7 +150,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       paddingHorizontal: 12,
       marginRight: 8
     },
-    sendBtn: { backgroundColor: '#e74c3c', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 },
+    sendBtn: { backgroundColor: '#e74c3c', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10 },
     sendText: { color: '#fff', fontWeight: 'bold' },
 
     premiumOverlay: {
@@ -195,7 +197,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <Text style={styles.title}>💬 ChatRiders</Text>
           <TouchableOpacity style={styles.close} onPress={onClose}>
@@ -206,9 +208,11 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         <FlatList
           ref={listRef}
           style={styles.list}
+          contentContainerStyle={{ paddingBottom: 100 }}
           data={messages}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
+          keyboardShouldPersistTaps="handled"
           refreshing={loading}
           onRefresh={async () => {
             try {
@@ -240,6 +244,10 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
           </TouchableOpacity>
         </View>
 
+        {Platform.OS === 'android' && (
+          <View style={{ height: 34 }} />
+        )}
+
         {!isPremium && (
           <View style={styles.premiumOverlay}>
             <View style={styles.premiumCard}>
@@ -253,7 +261,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
             </View>
           </View>
         )}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
