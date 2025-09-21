@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "sos-app",
+    "name": "Rider SOS Delivery",
     "slug": "sos-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/sos.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/sos.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -18,7 +18,11 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
         "NSLocationWhenInUseUsageDescription": "Esta aplicación necesita acceso a la ubicación para enviar alertas SOS y compartir tu ubicación en tiempo real.",
         "NSLocationAlwaysUsageDescription": "Esta aplicación necesita acceso a la ubicación en segundo plano para enviar alertas SOS y compartir tu ubicación en tiempo real.",
-        "UIBackgroundModes": ["location", "background-processing", "background-fetch"]
+        "UIBackgroundModes": [
+          "location",
+          "background-processing",
+          "background-fetch"
+        ]
       }
     },
     "android": {
@@ -36,7 +40,8 @@
         "FOREGROUND_SERVICE_LOCATION",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -58,7 +63,6 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ]
-
     ]
   }
 }

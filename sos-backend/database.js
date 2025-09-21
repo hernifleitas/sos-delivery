@@ -1,444 +1,301 @@
-// database.js
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+// database.js - Implementación SOLO PostgreSQL
+const { Pool } = require('pg');
 
 class Database {
   constructor() {
-    this.db = null;
+    this.pool = null;
     this.init();
   }
 
   init() {
-    const dbPath = path.join(__dirname, 'users.db');
-    
-    this.db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error('Error abriendo la base de datos:', err.message);
-      } else {
-        console.log('Conectado a la base de datos SQLite');
-        this.createTables();
-      }
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      console.error('DATABASE_URL no está definida. Configura la URL de PostgreSQL en variables de entorno.');
+      process.exit(1);
+    }
+
+    this.pool = new Pool({
+      connectionString,
+      ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
     });
+
+    this.createTablesPg()
+      .then(() => console.log('Conectado a PostgreSQL y tablas verificadas'))
+      .catch((err) => console.error('Error creando tablas en PostgreSQL:', err.message));
   }
 
-  createTables() {
-    const createUsersTable = `
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        moto TEXT NOT NULL,
-        color TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        is_active BOOLEAN DEFAULT 1,
-        status TEXT DEFAULT 'pending',
-        reset_token TEXT,
-        reset_token_expires DATETIME,
-        role TEXT DEFAULT 'user'
-      )
-    `;
+  // =================== CREACIÓN DE TABLAS ===================
+  async createTablesPg() {
+    const client = await this.pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          nombre TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          moto TEXT NOT NULL,
+          color TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW(),
+          is_active BOOLEAN DEFAULT TRUE,
+          status TEXT DEFAULT 'pending',
+          reset_token TEXT,
+          reset_token_expires TIMESTAMP,
+          role TEXT DEFAULT 'user'
+        );
+      `);
 
-    this.db.run(createUsersTable, (err) => {
-      if (err) {
-        console.error('Error creando tabla users:', err.message);
-      } else {
-        console.log('Tabla users creada/verificada correctamente');
-      }
-    });
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          room TEXT DEFAULT 'global',
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW(),
+          deleted_at TIMESTAMP,
+          deleted_by INTEGER
+        );
+      `);
 
-    const createMessagesTable = `
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        room TEXT DEFAULT 'global',
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        deleted_at DATETIME,
-        deleted_by INTEGER,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-      )
-    `;
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS device_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          token TEXT UNIQUE NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
 
-    this.db.run(createMessagesTable, (err) => {
-      if (err) {
-        console.error('Error creando tabla messages:', err.message);
-      } else {
-        console.log('Tabla messages creada/verificada correctamente');
-      }
-    });
+      // Trigger para updated_at en device_tokens
+      await client.query(`
+        CREATE OR REPLACE FUNCTION set_updated_at()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
 
-    const createDeviceTokens = `
-      CREATE TABLE IF NOT EXISTS device_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        token TEXT UNIQUE NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-      )
-    `;
-
-    this.db.run(createDeviceTokens, (err) => {
-      if (err) {
-        console.error('Error creando tabla device_tokens:', err.message);
-      } else {
-        console.log('Tabla device_tokens creada/verificada correctamente');
-      }
-    });
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'device_tokens_set_updated_at'
+          ) THEN
+            CREATE TRIGGER device_tokens_set_updated_at
+            BEFORE UPDATE ON device_tokens
+            FOR EACH ROW
+            EXECUTE FUNCTION set_updated_at();
+          END IF;
+        END $$;
+      `);
+    } finally {
+      client.release();
+    }
   }
 
-  // Crear usuario
+  // =================== MÉTODOS USUARIOS ===================
   createUser(userData) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const { nombre, email, password, moto, color } = userData;
-      
       const sql = `
         INSERT INTO users (nombre, email, password, moto, color)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, nombre, email, moto, color, created_at
       `;
-      
-      this.db.run(sql, [nombre, email, password, moto, color], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            id: this.lastID,
-            nombre,
-            email,
-            moto,
-            color,
-            created_at: new Date().toISOString()
-          });
-        }
-      });
-    });
+      const { rows } = await this.pool.query(sql, [nombre, email, password, moto, color]);
+      return rows[0];
+    })();
   }
 
-  // Buscar usuario por email
   findUserByEmail(email) {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT * FROM users WHERE email = ? AND is_active = 1';
-      
-      this.db.get(sql, [email], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    return (async () => {
+      const sql = 'SELECT * FROM users WHERE email = $1 AND is_active = TRUE';
+      const { rows } = await this.pool.query(sql, [email]);
+      return rows[0];
+    })();
   }
 
-  // Buscar usuario por ID
   findUserById(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT * FROM users WHERE id = ? AND is_active = 1';
-      
-      this.db.get(sql, [id], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    return (async () => {
+      const sql = 'SELECT * FROM users WHERE id = $1 AND is_active = TRUE';
+      const { rows } = await this.pool.query(sql, [id]);
+      return rows[0];
+    })();
   }
 
-  // Actualizar usuario
   updateUser(id, userData) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const { nombre, moto, color } = userData;
-      
       const sql = `
-        UPDATE users 
-        SET nombre = ?, moto = ?, color = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        UPDATE users
+        SET nombre = $1, moto = $2, color = $3, updated_at = NOW()
+        WHERE id = $4
       `;
-      
-      this.db.run(sql, [nombre, moto, color, id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+      const result = await this.pool.query(sql, [nombre, moto, color, id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Actualizar contraseña de usuario
   updateUserPassword(id, password) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const sql = `
-        UPDATE users 
-        SET password = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        UPDATE users
+        SET password = $1, updated_at = NOW()
+        WHERE id = $2
       `;
-      
-      this.db.run(sql, [password, id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+      const result = await this.pool.query(sql, [password, id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Desactivar usuario
   deactivateUser(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET is_active = 0 WHERE id = ?';
-      
-      this.db.run(sql, [id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const result = await this.pool.query('UPDATE users SET is_active = FALSE WHERE id = $1', [id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Obtener todos los usuarios activos
   getAllUsers() {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT id, nombre, email, moto, color, created_at FROM users WHERE is_active = 1';
-      
-      this.db.all(sql, [], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows);
-        }
-      });
-    });
+    return (async () => {
+      const { rows } = await this.pool.query('SELECT id, nombre, email, moto, color, created_at FROM users WHERE is_active = TRUE');
+      return rows;
+    })();
   }
 
-  // Obtener usuarios pendientes de aprobación
   getPendingUsers() {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT id, nombre, email, moto, color, created_at FROM users WHERE status = "pending" AND is_active = 1';
-      
-      this.db.all(sql, [], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows);
-        }
-      });
-    });
+    return (async () => {
+      const { rows } = await this.pool.query("SELECT id, nombre, email, moto, color, created_at FROM users WHERE status = 'pending' AND is_active = TRUE");
+      return rows;
+    })();
   }
 
-  // Aprobar usuario
   approveUser(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET status = "approved", updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-      
-      this.db.run(sql, [id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const result = await this.pool.query('UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2', ['approved', id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Rechazar usuario
   rejectUser(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET status = "rejected", is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-      
-      this.db.run(sql, [id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const result = await this.pool.query('UPDATE users SET status = $1, is_active = FALSE, updated_at = NOW() WHERE id = $2', ['rejected', id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Guardar token de reset
   saveResetToken(email, token, expiresAt) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE email = ?';
-      
-      this.db.run(sql, [token, expiresAt, email], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const sql = 'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE email = $3';
+      const result = await this.pool.query(sql, [token, expiresAt, email]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Buscar usuario por token de reset
   findUserByResetToken(token) {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > CURRENT_TIMESTAMP AND is_active = 1';
-      
-      this.db.get(sql, [token], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    return (async () => {
+      const sql = 'SELECT * FROM users WHERE reset_token = $1 AND reset_token_expires > NOW() AND is_active = TRUE';
+      const { rows } = await this.pool.query(sql, [token]);
+      return rows[0];
+    })();
   }
 
-  // Limpiar token de reset
   clearResetToken(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = ?';
-      
-      this.db.run(sql, [id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const sql = 'UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = $1';
+      const result = await this.pool.query(sql, [id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Hacer usuario administrador
   makeAdmin(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'UPDATE users SET role = "admin" WHERE id = ?';
-      
-      this.db.run(sql, [id], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    return (async () => {
+      const result = await this.pool.query('UPDATE users SET role = $1 WHERE id = $2', ['admin', id]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // Verificar si usuario es administrador
   isAdmin(id) {
-    return new Promise((resolve, reject) => {
-      const sql = 'SELECT role FROM users WHERE id = ? AND is_active = 1';
-      
-      this.db.get(sql, [id], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row?.role === 'admin');
-        }
-      });
-    });
+    return (async () => {
+      const { rows } = await this.pool.query('SELECT role FROM users WHERE id = $1 AND is_active = TRUE', [id]);
+      return rows[0]?.role === 'admin';
+    })();
   }
 
-  // CHAT: Agregar mensaje
+  // =================== CHAT ===================
   addMessage(userId, content, room = 'global') {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO messages (user_id, room, content)
-        VALUES (?, ?, ?)
-      `;
-      this.db.run(sql, [userId, room, content], function(err) {
-        if (err) return reject(err);
-        resolve({ id: this.lastID });
-      });
-    });
+    return (async () => {
+      const sql = 'INSERT INTO messages (user_id, room, content) VALUES ($1, $2, $3) RETURNING id';
+      const { rows } = await this.pool.query(sql, [userId, room, content]);
+      return { id: rows[0].id };
+    })();
   }
 
-  // CHAT: Obtener historial de mensajes (incluye datos públicos del usuario)
   getMessages({ room = 'global', before = null, limit = 50 }) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const params = [room];
       let sql = `
         SELECT m.id, m.content, m.created_at, u.id AS user_id, u.nombre, u.moto, u.color
         FROM messages m
         JOIN users u ON u.id = m.user_id
-        WHERE m.room = ? AND m.deleted_at IS NULL
+        WHERE m.room = $1 AND m.deleted_at IS NULL
       `;
       if (before) {
-        sql += ' AND datetime(m.created_at) < datetime(?)';
+        sql += ' AND m.created_at < $2';
         params.push(before);
       }
-      sql += ' ORDER BY datetime(m.created_at) DESC LIMIT ?';
-      params.push(limit);
-
-      this.db.all(sql, params, (err, rows) => {
-        if (err) return reject(err);
-        // Devolver en orden cronológico ascendente
-        resolve(rows.reverse());
-      });
-    });
+      sql += ' ORDER BY m.created_at DESC LIMIT ' + Number(limit);
+      const { rows } = await this.pool.query(sql, params);
+      return rows.reverse();
+    })();
   }
 
-  // CHAT: Borrar (soft delete) mensaje
   softDeleteMessage(messageId, adminUserId) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const sql = `
         UPDATE messages
-        SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ?
-        WHERE id = ? AND deleted_at IS NULL
+        SET deleted_at = NOW(), deleted_by = $1
+        WHERE id = $2 AND deleted_at IS NULL
       `;
-      this.db.run(sql, [adminUserId, messageId], function(err) {
-        if (err) return reject(err);
-        resolve({ changes: this.changes });
-      });
-    });
+      const result = await this.pool.query(sql, [adminUserId, messageId]);
+      return { changes: result.rowCount };
+    })();
   }
 
-  // TOKENS: Registrar o actualizar token de notificación
+  // =================== TOKENS ===================
   upsertDeviceToken(userId, token) {
-    return new Promise((resolve, reject) => {
+    return (async () => {
       const sql = `
         INSERT INTO device_tokens (user_id, token)
-        VALUES (?, ?)
-        ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, updated_at = CURRENT_TIMESTAMP
+        VALUES ($1, $2)
+        ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, updated_at = NOW()
+        RETURNING id
       `;
-      this.db.run(sql, [userId, token], function(err) {
-        if (err) return reject(err);
-        resolve({ id: this.lastID, changes: this.changes });
-      });
-    });
+      const { rows } = await this.pool.query(sql, [userId, token]);
+      return { id: rows[0]?.id || null, changes: rows[0] ? 1 : 0 };
+    })();
   }
 
-  // TOKENS: Obtener tokens de todos menos el emisor
   getAllTokensExcept(userId) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT token FROM device_tokens WHERE user_id != ?
-      `;
-      this.db.all(sql, [userId], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows.map(r => r.token));
-      });
-    });
+    return (async () => {
+      const { rows } = await this.pool.query('SELECT token FROM device_tokens WHERE user_id != $1', [userId]);
+      return rows.map(r => r.token);
+    })();
   }
 
-  // TOKENS: Obtener todos los tokens
   getAllTokens() {
-    return new Promise((resolve, reject) => {
-      const sql = `SELECT token FROM device_tokens`;
-      this.db.all(sql, [], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows.map(r => r.token));
-      });
-    });
+    return (async () => {
+      const { rows } = await this.pool.query('SELECT token FROM device_tokens');
+      return rows.map(r => r.token);
+    })();
   }
 
-  // Cerrar conexión
+  // =================== CIERRE ===================
   close() {
-    if (this.db) {
-      this.db.close((err) => {
-        if (err) {
-          console.error('Error cerrando la base de datos:', err.message);
-        } else {
-          console.log('Conexión a la base de datos cerrada');
-        }
-      });
+    if (this.pool) {
+      this.pool.end().catch((e) => console.error('Error cerrando pool PG:', e));
     }
   }
 }

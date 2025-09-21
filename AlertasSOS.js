@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, useColorScheme, Dimensions, PanResponder, Animated } from "react-native";
 import axios from "axios";
+import { getBackendURL } from "./config";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PANEL_HEIGHT = 200; // Altura del panel cuando está colapsado
 const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.6; // Altura cuando está expandido
 
-const BACKEND_URL = "http://192.168.1.41:10000/alertas";
+const ALERTAS_ENDPOINT = `${getBackendURL()}/alertas`;
 
 export default function AlertasSOS() {
   const colorScheme = useColorScheme();
@@ -21,11 +22,10 @@ export default function AlertasSOS() {
 
   const fetchAlertas = async () => {
     try {
-      const response = await axios.get(BACKEND_URL, {
+      const response = await axios.get(ALERTAS_ENDPOINT, {
         timeout: 10000,
         headers: { "Content-Type": "application/json" }
       });
-      
       if (response.data && Array.isArray(response.data)) {
         setAlertas(response.data);
       }
@@ -38,7 +38,7 @@ export default function AlertasSOS() {
 
   useEffect(() => {
     fetchAlertas();
-    const interval = setInterval(fetchAlertas, 10000); // Actualizar cada 10 segundos
+    const interval = setInterval(fetchAlertas, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -268,9 +268,6 @@ export default function AlertasSOS() {
                   <View style={dynamicStyles.alertaHeader}>
                     <Text style={dynamicStyles.alertaTipo}>
                       {getTipoEmoji(alerta.tipo)} {alerta.tipo.toUpperCase()}
-                    </Text>
-                    <Text style={dynamicStyles.alertaTiempo}>
-                      {formatearTiempo(alerta.tiempoTranscurrido)}
                     </Text>
                   </View>
                   <Text style={dynamicStyles.alertaInfo}>

@@ -122,14 +122,14 @@ class AuthService {
       if (user.status === 'pending') {
         return {
           success: false,
-          message: 'Tu cuenta está pendiente de aprobación por un administrador'
+          message: 'Tu cuenta está en revisión por un administrador. Te avisaremos cuando se apruebe y podrás iniciar sesión.'
         };
       }
 
       if (user.status === 'rejected') {
         return {
           success: false,
-          message: 'Tu cuenta ha sido rechazada. Contacta al administrador'
+          message: 'Tu cuenta fue rechazada. Si crees que es un error, contacta al administrador.'
         };
       }
 
@@ -568,4 +568,3 @@ class AuthService {
 }
 
 module.exports = new AuthService();
-

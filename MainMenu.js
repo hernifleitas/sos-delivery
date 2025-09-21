@@ -10,7 +10,9 @@ export default function MainMenu({
   onQuickNotifications,
   onToggleTracking,
   onOpenAdmin,
-  onOpenChat
+  onOpenChat,
+  isInvisible = false,
+  onToggleInvisible
 }) {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
@@ -80,6 +82,15 @@ export default function MainMenu({
           <TouchableOpacity style={styles.option} onPress={onQuickNotifications}>
             <Text style={styles.optionText}>🔔 Notificaciones rápidas</Text>
             <Text style={styles.subtitle}>Enviar/mostrar accesos rápidos de SOS</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.option} onPress={onToggleInvisible}>
+            <Text style={styles.optionText}>
+              {isInvisible ? '👻 Desactivar Modo Invisible' : '👻 Activar Modo Invisible'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isInvisible ? 'Actualmente NO se envía tu ubicación al backend' : 'Se enviará tu ubicación al backend para el mapa'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.option} onPress={onToggleTracking}>

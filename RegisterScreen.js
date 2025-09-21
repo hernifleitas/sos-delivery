@@ -14,8 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-
-const BACKEND_URL = "http://192.168.1.41:10000";
+import { getBackendURL } from "./config";
 
 export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
   const colorScheme = useColorScheme();
@@ -152,6 +151,8 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
     },
   });
 
+  const BASE_URL = getBackendURL();
+
   const handleRegister = async () => {
     if (!nombre || !email || !password || !confirmPassword || !moto || !color) {
       Alert.alert("Error", "Por favor completa todos los campos");
@@ -186,7 +187,7 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       
       console.log('Enviando datos de registro:', userData);
       
-      const response = await axios.post(`${BACKEND_URL}/auth/register`, userData, {
+      const response = await axios.post(`${BASE_URL}/auth/register`, userData, {
         timeout: 15000,
         headers: { "Content-Type": "application/json" }
       });
@@ -363,4 +364,3 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
     </KeyboardAvoidingView>
   );
 }
-
