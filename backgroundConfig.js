@@ -203,13 +203,7 @@ const enviarUbicacionInmediata = async (tipo) => {
     await AsyncStorage.setItem("sosEnviado", "true");
     console.log(`Ubicación enviada inmediatamente (${tipo}):`, fechaHora);
     
-    // Enviar notificación de confirmación
-    await enviarNotificacionEstado(
-      `✅ Ubicación Enviada`,
-      `SOS ${tipo} enviado correctamente. Ubicación: ${ubicacion.lat.toFixed(4)}, ${ubicacion.lng.toFixed(4)}`,
-      { tipo, ubicacion }
-    );
-    
+
   } catch (err) {
     console.error("Error enviando ubicación inmediata:", err.message);
     await enviarNotificacionEstado(

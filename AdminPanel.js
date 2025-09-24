@@ -88,7 +88,7 @@ export default function AdminPanel({ onClose }) {
                 {},
                 {
                   headers: { 'Authorization': `Bearer ${token}` },
-                  timeout: 10000
+                  timeout: 15000
                 }
               );
 
@@ -125,7 +125,7 @@ export default function AdminPanel({ onClose }) {
                 {},
                 {
                   headers: { 'Authorization': `Bearer ${token}` },
-                  timeout: 10000
+                  timeout: 15000
                 }
               );
 

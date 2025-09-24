@@ -371,7 +371,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
             <Text style={dynamicStyles.label}>Email</Text>
             <TextInput
               style={[dynamicStyles.input, email ? dynamicStyles.inputFocused : null]}
-              placeholder="tu@email.com"
+              placeholder="Ingresá tu email"
               placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
               value={email}
               onChangeText={setEmail}
@@ -385,7 +385,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
             <Text style={dynamicStyles.label}>Contraseña</Text>
             <TextInput
               style={[dynamicStyles.input, password ? dynamicStyles.inputFocused : null]}
-              placeholder="Tu contraseña"
+              placeholder="Ingresá tu contraseña"
               placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
               value={password}
               onChangeText={setPassword}
@@ -436,7 +436,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
 
           {/* Enlace de olvidé mi contraseña */}
           <View style={dynamicStyles.forgotPasswordLink}>
-            <TouchableOpacity onPress={() => setShowForgotPassword(!showForgotPassword)}>
+            <TouchableOpacity onPress={() => onNavigate && onNavigate('forgot')}>
               <Text style={dynamicStyles.forgotPasswordLinkText}>
                 ¿Olvidaste tu contraseña?
               </Text>
@@ -458,7 +458,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
               <Text style={dynamicStyles.label}>Email</Text>
               <TextInput
                 style={[dynamicStyles.input, resetEmail ? dynamicStyles.inputFocused : null]}
-                placeholder="tu@email.com"
+                placeholder="Ingresá tu email"
                 placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
                 value={resetEmail}
                 onChangeText={setResetEmail}

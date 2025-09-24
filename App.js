@@ -1,6 +1,6 @@
 // App.js
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, AppState, useColorScheme } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, AppState, useColorScheme, Linking } from "react-native";
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { iniciarUbicacionBackground, detenerUbicacionBackground, verificarEstadoTracking } from "./tasks";
@@ -22,13 +22,151 @@ import { registerForPushNotificationsAsync, sendPushTokenToBackend } from "./ser
 
 const BACKEND_URL = getBackendURL();
 
+// Pantalla: Olvidé mi contraseña
+function ForgotPasswordScreen({ onNavigate }) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setMessage("");
+      const res = await axios.post(`${BACKEND_URL}/auth/request-password-reset`, { email }, { timeout: 12000 });
+      if (res.data?.success) {
+        setMessage("Te enviamos un email con instrucciones para cambiar tu contraseña.");
+      } else {
+        setMessage(res.data?.message || "No se pudo enviar el email. Verifica el correo.");
+      }
+    } catch (e) {
+      setMessage("No se pudo enviar el email. Verifica tu conexión o el correo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, padding: 20, paddingTop: 80, backgroundColor: '#fff' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+        <TouchableOpacity onPress={() => onNavigate('login')} style={{ padding: 8, marginRight: 8 }}>
+          <Text style={{ fontSize: 18 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Olvidé mi contraseña</Text>
+      </View>
+
+      <Text style={{ marginBottom: 8, color: '#2c3e50', fontWeight: '600' }}>Email</Text>
+      <TextInput
+        style={{ borderWidth: 1, borderColor: '#e1e8ed', borderRadius: 10, padding: 12, marginBottom: 12 }}
+        placeholder="Ingresá tu email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        value={email}
+        onChangeText={setEmail}
+      />
+
+      <TouchableOpacity
+        onPress={handleSubmit}
+        disabled={loading || !email}
+        style={{ backgroundColor: '#e74c3c', padding: 14, borderRadius: 12, alignItems: 'center' }}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>{loading ? 'Enviando...' : 'Enviar enlace de reseteo'}</Text>
+      </TouchableOpacity>
+
+      {!!message && (
+        <Text style={{ marginTop: 14, color: '#2c3e50' }}>{message}</Text>
+      )}
+    </View>
+  );
+}
+
+// Pantalla: Resetear contraseña con token
+function ResetPasswordScreen({ onNavigate, token: initialToken }) {
+  const [token, setToken] = useState(initialToken || "");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async () => {
+    try {
+      if (!token || !password || password !== confirm) {
+        setMessage("Completá los campos y asegurate que las contraseñas coincidan.");
+        return;
+      }
+      setLoading(true);
+      setMessage("");
+      const res = await axios.post(`${BACKEND_URL}/auth/reset-password`, { token, newPassword: password }, { timeout: 12000 });
+      if (res.data?.success) {
+        setMessage("¡Listo! Tu contraseña fue cambiada.");
+        setTimeout(() => onNavigate('login'), 1500);
+      } else {
+        setMessage(res.data?.message || "No se pudo cambiar la contraseña.");
+      }
+    } catch (e) {
+      setMessage("No se pudo cambiar la contraseña. Verificá el enlace o intentá nuevamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, padding: 20, paddingTop: 80, backgroundColor: '#fff' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+        <TouchableOpacity onPress={() => onNavigate('login')} style={{ padding: 8, marginRight: 8 }}>
+          <Text style={{ fontSize: 18 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Cambiar contraseña</Text>
+      </View>
+
+      <Text style={{ marginBottom: 8, color: '#2c3e50', fontWeight: '600' }}>Token</Text>
+      <TextInput
+        style={{ borderWidth: 1, borderColor: '#e1e8ed', borderRadius: 10, padding: 12, marginBottom: 12 }}
+        placeholder="Pega el token si no vino por enlace"
+        autoCapitalize="none"
+        value={token}
+        onChangeText={setToken}
+      />
+
+      <Text style={{ marginBottom: 8, color: '#2c3e50', fontWeight: '600' }}>Nueva contraseña</Text>
+      <TextInput
+        style={{ borderWidth: 1, borderColor: '#e1e8ed', borderRadius: 10, padding: 12, marginBottom: 12 }}
+        placeholder="Ingresá tu nueva contraseña"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+      <Text style={{ marginBottom: 8, color: '#2c3e50', fontWeight: '600' }}>Confirmar contraseña</Text>
+      <TextInput
+        style={{ borderWidth: 1, borderColor: '#e1e8ed', borderRadius: 10, padding: 12, marginBottom: 12 }}
+        placeholder="Confirmá tu nueva contraseña"
+        secureTextEntry
+        value={confirm}
+        onChangeText={setConfirm}
+      />
+
+      <TouchableOpacity
+        onPress={handleSubmit}
+        disabled={loading || !password || !confirm}
+        style={{ backgroundColor: '#e74c3c', padding: 14, borderRadius: 12, alignItems: 'center' }}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold' }}>{loading ? 'Guardando...' : 'Guardar nueva contraseña'}</Text>
+      </TouchableOpacity>
+
+      {!!message && (
+        <Text style={{ marginTop: 14, color: '#2c3e50' }}>{message}</Text>
+      )}
+    </View>
+  );
+}
+
 export default function App() {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
-  
+
   // Estados de navegación y autenticación
   const [currentScreen, setCurrentScreen] = useState('splash');
   const [user, setUser] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -37,8 +175,9 @@ export default function App() {
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [isPremium, setIsPremium] = useState(true); // TODO: actualizar desde backend/billing
-  const [invisibleMode, setInvisibleMode] = useState(false);
-  
+  const [isRepartiendo, setIsRepartiendo] = useState(false); // Modo Repartiendo deshabilitado en esquema 'Activo' clásico
+  const [booted, setBooted] = useState(false); // evita "salto" splash→main al rehidratar
+
   // Estados de la aplicación
   const [sosActivo, setSosActivo] = useState(false);
   const [tipoSOS, setTipoSOS] = useState(""); // "robo" o "accidente"
@@ -53,11 +192,11 @@ export default function App() {
     const cargarDatos = async () => {
       // Limpiar notificaciones pendientes que puedan causar alertas automáticas
       await limpiarNotificacionesPendientes();
-      
+
       // Configurar notificaciones y acceso rápido
       await configurarNotificaciones();
       await configurarAccesoRapido();
-      
+
       // Verificar si el usuario está logueado
       const userLoggedIn = await AsyncStorage.getItem("userLoggedIn");
       const userData = await AsyncStorage.getItem("usuario");
@@ -95,11 +234,7 @@ export default function App() {
       // Cargar estados de SOS y tracking solo si está logueado
       if (userLoggedIn === "true" && userData && authToken) {
         await checkAdminStatus();
-        // Cargar modo invisible
-        try {
-          const inv = await AsyncStorage.getItem('invisibleMode');
-          setInvisibleMode(inv === 'true');
-        } catch (_) {}
+        // Modo repartiendo deshabilitado: no cargar estado
         const sos = await AsyncStorage.getItem("sosActivo");
         const tipo = await AsyncStorage.getItem("tipoSOS");
         if (sos === "true") {
@@ -117,19 +252,16 @@ export default function App() {
         const estadoTracking = await verificarEstadoTracking();
         setTrackingActivo(estadoTracking.trackingActivo);
 
-        // Si no hay SOS activo, enviar estado normal
-        const sosActivo = await AsyncStorage.getItem("sosActivo");
-        if (sosActivo !== "true") {
-          setTimeout(() => {
-            enviarEstadoNormal();
-          }, 2000);
+        // Iniciar tracking solo si hay SOS activo
+        const sosFlag = await AsyncStorage.getItem("sosActivo");
+        if (sosFlag === 'true') {
+          iniciarUbicacionBackground();
         }
-        
-        iniciarUbicacionBackground();
       }
     };
-    cargarDatos();
-  }, [isLoggedIn]);
+    // Ejecutar carga solo cuando la app ya rehidrató el estado inicial
+    if (booted) cargarDatos();
+  }, [isLoggedIn, booted]);
 
   // Manejar cambios de estado de la app
   useEffect(() => {
@@ -156,6 +288,30 @@ export default function App() {
       }
     })();
   }, [isLoggedIn, user?.id]);
+
+  // Deep links: ridersos://reset-password?token=...
+  useEffect(() => {
+    const handleUrl = (event) => {
+      try {
+        const url = typeof event === 'string' ? event : event?.url;
+        if (!url) return;
+        // Aceptar tanto esquema ridersos://reset-password?token=... como URLs web /reset-password
+        if (url.includes('reset-password')) {
+          const hasQuery = url.includes('?');
+          const query = hasQuery ? url.split('?')[1] : '';
+          const params = new URLSearchParams(query);
+          const token = params.get('token');
+          if (token) {
+            setResetToken(token);
+            setCurrentScreen('reset');
+          }
+        }
+      } catch (e) {}
+    };
+    const sub = Linking.addEventListener('url', handleUrl);
+    Linking.getInitialURL().then((initial) => { if (initial) handleUrl(initial); });
+    return () => { try { sub.remove(); } catch (_) {} };
+  }, []);
 
   // Función para activar SOS desde segundo plano
   const activarSOSBackground = async (tipo = 'robo') => {
@@ -193,6 +349,52 @@ export default function App() {
     }
   };
 
+  // Enviar ubicación al backend para SOS (inicial y actualizaciones)
+  const enviarUbicacionSOS = async () => {
+    try {
+      // Cargar últimos datos necesarios
+      const riderIdStored = await AsyncStorage.getItem('riderId');
+      let riderId = riderIdStored || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      if (!riderIdStored) await AsyncStorage.setItem('riderId', riderId);
+
+      const nombre = (await AsyncStorage.getItem('nombre')) || user?.nombre || 'Usuario';
+      const moto = (await AsyncStorage.getItem('moto')) || user?.moto || 'No especificado';
+      let color = (await AsyncStorage.getItem('color')) || user?.color || 'No especificado';
+      color = (color || '').trim() !== '' ? color : 'No especificado';
+
+      const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
+      const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+      const fechaHora = new Date().toISOString();
+
+      // Determinar si ya se envió el SOS inicial en esta sesión
+      const sosEnviado = await AsyncStorage.getItem('sosEnviado');
+      // IMPORTANTE: leer tipo desde AsyncStorage para evitar condiciones de carrera con setState
+      const tipoSOSAlmacenado = await AsyncStorage.getItem('tipoSOS');
+      const tipo = sosEnviado === 'true' ? 'actualizacion' : (tipoSOSAlmacenado || 'robo');
+
+      const token = await AsyncStorage.getItem('authToken');
+      await axios.post(`${BACKEND_URL}/sos`, {
+        riderId,
+        nombre,
+        moto,
+        color,
+        ubicacion,
+        fechaHora,
+        tipo,
+        tipoSOSActual: tipoSOSAlmacenado || tipo,
+      }, {
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        timeout: 15000,
+      });
+
+      if (sosEnviado !== 'true') {
+        await AsyncStorage.setItem('sosEnviado', 'true');
+      }
+    } catch (e) {
+      console.warn('Error enviando SOS:', e?.message);
+    }
+  };
+
   // Funciones de navegación
   const handleNavigate = (screen) => {
     setCurrentScreen(screen);
@@ -202,7 +404,7 @@ export default function App() {
     setUser(userData);
     setIsLoggedIn(true);
     setCurrentScreen('main');
-    
+
     // Guardar datos del usuario
     await AsyncStorage.setItem("usuario", JSON.stringify(userData));
     await AsyncStorage.setItem("userLoggedIn", "true");
@@ -215,7 +417,7 @@ export default function App() {
     if (userData?.nombre) await AsyncStorage.setItem('nombre', userData.nombre);
     if (userData?.moto) await AsyncStorage.setItem('moto', userData.moto);
     if (userData?.color) await AsyncStorage.setItem('color', userData.color);
-    
+
     // Verificar si es administrador
     await checkAdminStatus();
 
@@ -232,7 +434,7 @@ export default function App() {
     setUser(userData);
     setIsLoggedIn(true);
     setCurrentScreen('main');
-    
+
     // Guardar datos del usuario
     await AsyncStorage.setItem("usuario", JSON.stringify(userData));
     await AsyncStorage.setItem("userLoggedIn", "true");
@@ -265,20 +467,20 @@ export default function App() {
     setUser(null);
     setIsLoggedIn(false);
     setCurrentScreen('splash');
-    
+
     // Limpiar datos de SOS
     setSosActivo(false);
     setTipoSOS("");
     setContador(0);
-    
+
     // Limpiar intervalos
     if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
     if (intervaloSOS.current) clearInterval(intervaloSOS.current);
-    
+
     // Limpiar datos de AsyncStorage
     await AsyncStorage.multiRemove([
-      'userLoggedIn', 
-      'usuario', 
+      'userLoggedIn',
+      'usuario',
       'authToken',
       'sosActivo',
       'sosInicio',
@@ -288,7 +490,7 @@ export default function App() {
       'notificacionBackgroundEnviada',
       'notificacionAccesoEnviada'
     ]);
-    
+
     // Detener tracking
     await detenerUbicacionBackground();
     setTrackingActivo(false);
@@ -301,13 +503,13 @@ export default function App() {
         setIsAdmin(false);
         return;
       }
-  
+
       // Hacemos la petición al endpoint de admin
       const response = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 10000
       });
-  
+
       // Si obtenemos status 200 y la respuesta tiene datos, es admin
       if (response.status === 200) {
         setIsAdmin(true);
@@ -315,7 +517,7 @@ export default function App() {
       } else {
         setIsAdmin(false);
       }
-  
+
     } catch (err) {
       // Si da 403 significa que no es admin
       if (err.response?.status === 403) {
@@ -328,10 +530,9 @@ export default function App() {
       }
     }
   };
-  
 
   const activarSOS = async (tipo) => {
-    if(sosActivo) return;
+    if (sosActivo) return;
     setTipoSOS(tipo);
     setSosActivo(true);
     setContador(0);
@@ -362,6 +563,8 @@ export default function App() {
     if (!intervaloSOS.current) {
       intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
     }
+    // Asegurar tracking en background durante SOS
+    try { await iniciarUbicacionBackground(); } catch {}
   };
 
   const cancelarSOS = async () => {
@@ -395,7 +598,7 @@ export default function App() {
         color,
         ubicacion: { lat: ubicacion.lat ?? 0, lng: ubicacion.lng ?? 0 },
         fechaHora,
-        tipo: "normal",
+        tipo: "normal", // Tipo normal para bandera verde
         cancel: true,
       }, {
         timeout: 15000,
@@ -424,103 +627,44 @@ export default function App() {
     }
   };
 
-  // Alternar Modo Invisible (no envía ubicación al backend desde background)
-  const toggleInvisibleMode = async () => {
-    try {
-      const next = !invisibleMode;
-      setInvisibleMode(next);
-      await AsyncStorage.setItem('invisibleMode', next ? 'true' : 'false');
-      Alert.alert(
-        next ? 'Modo Invisible Activado' : 'Modo Invisible Desactivado',
-        next ? 'No se enviará tu ubicación al backend mientras esté activo.' : 'Se reanuda el envío de ubicación en segundo plano.'
-      );
-    } catch (e) {
-      console.warn('No se pudo alternar modo invisible:', e?.message);
-    }
-  };
+  // Modo Repartiendo deshabilitado: función sin efectos
+  const toggleRepartiendo = async () => { setIsRepartiendo(false); };
 
-  const enviarEstadoNormal = async () => {
-    try {
-      const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
-      let ubicacion = { lat: 0, lng: 0 };
-      if (ubicacionString) ubicacion = JSON.parse(ubicacionString);
+  // El estado 'normal' deja de enviarse automáticamente.
 
-      const riderId = await AsyncStorage.getItem("riderId");
-      const fechaHora = new Date().toISOString();
-      const colorFinal = (user?.color || "No especificado").trim();
+  // Rehidratación inicial: restaurar sesión y pantalla antes de renderizar
+  useEffect(() => {
+    (async () => {
+      try {
+        const [userLoggedIn, userData, lastScreen] = await Promise.all([
+          AsyncStorage.getItem('userLoggedIn'),
+          AsyncStorage.getItem('usuario'),
+          AsyncStorage.getItem('lastScreen'),
+        ]);
 
-      const authToken = await AsyncStorage.getItem('authToken');
-      const sosEnviadoFlag = await AsyncStorage.getItem('sosEnviado');
-      if (sosEnviadoFlag !== 'true') {
-        await axios.post(`${BACKEND_URL}/sos`, {
-          riderId,
-          nombre: user?.nombre || "Usuario",
-          moto: user?.moto || "No especificado",
-          color: colorFinal,
-          ubicacion: {
-            lat: ubicacion.lat ?? 0,
-            lng: ubicacion.lng ?? 0
-          },
-          fechaHora,
-          tipo: "normal", // Tipo normal para bandera verde
-        }, {
-          timeout: 15000,
-          headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
-        });
-      } else {
-        console.log('Se omite envío tipo normal: hay SOS activo.');
+        if (userLoggedIn === 'true' && userData) {
+          const userInfo = JSON.parse(userData);
+          setUser(userInfo);
+          setIsLoggedIn(true);
+          // Si hay una pantalla previa válida, ir ahí; sino a 'main'
+          const next = lastScreen || 'main';
+          setCurrentScreen(next);
+        } else {
+          // Sin sesión: conservar pantalla actual (splash) o 'login'
+          setCurrentScreen('splash');
+        }
+      } catch (_) {
+        setCurrentScreen('splash');
+      } finally {
+        setBooted(true);
       }
-    } catch (err) {
-      console.error("Error enviando estado normal:", err.message);
-    }
-  };
+    })();
+  }, []);
 
-
-  const enviarUbicacionSOS = async () => {
-    try {
-      const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
-      let ubicacion = { lat: 0, lng: 0 };
-      if (ubicacionString) ubicacion = JSON.parse(ubicacionString);
-
-      // Respeto de Modo Invisible: no enviar si no hay SOS activo
-      const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
-      const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
-      if (invisible && !sosActivoFlag) {
-        console.log('Modo Invisible activo (foreground): no se envía ubicación (sin SOS).');
-        return;
-      }
-
-      // Usar el tipo SOS real guardado como fuente de verdad
-      const tipoSOSGuardado = (await AsyncStorage.getItem("tipoSOS")) || tipoSOS || "normal";
-
-      const riderId = await AsyncStorage.getItem("riderId");
-      const fechaHora = new Date().toISOString();
-      const colorFinal = (user?.color || "No especificado").trim();
-
-      const authToken = await AsyncStorage.getItem('authToken');
-      await axios.post(`${BACKEND_URL}/sos`, {
-        riderId,
-        nombre: user?.nombre || "Usuario",
-        moto: user?.moto || "No especificado",
-        color: colorFinal,
-        ubicacion,
-        fechaHora,
-        // Enviar SIEMPRE el tipo SOS real en cada actualización
-        tipo: tipoSOSGuardado,
-        tipoSOSActual: tipoSOSGuardado,
-      }, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
-      });
-
-      console.log(`Ubicación enviada (${tipoSOSGuardado}):`, fechaHora);
-    } catch (err) {
-      console.error("Error enviando SOS:", err.message);
-      Alert.alert(
-        "Error de Conexión", 
-        "No se pudo enviar el SOS. Verifica que:\n• El backend esté funcionando\n• Tu conexión a internet\n• La IP sea correcta"
-      );
-    }
-  };
+  // Persistir pantalla actual para restaurar al volver del background / recreación
+  useEffect(() => {
+    AsyncStorage.setItem('lastScreen', currentScreen).catch(() => {});
+  }, [currentScreen]);
 
   // Estilos dinámicos basados en el modo oscuro
   const dynamicStyles = StyleSheet.create({
@@ -548,17 +692,30 @@ export default function App() {
     }
   });
 
+  // Evitar parpadeo a splash antes de rehidratar
+  if (!booted) {
+    return null;
+  }
+
   // Renderizar diferentes pantallas
   if (currentScreen === 'splash') {
     return <SplashScreen onNavigate={handleNavigate} />;
   }
-  
+
   if (currentScreen === 'login') {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
   }
-  
+
   if (currentScreen === 'register') {
     return <RegisterScreen onRegisterSuccess={handleRegisterSuccess} onNavigate={handleNavigate} />;
+  }
+
+  if (currentScreen === 'forgot') {
+    return <ForgotPasswordScreen onNavigate={handleNavigate} />;
+  }
+
+  if (currentScreen === 'reset') {
+    return <ResetPasswordScreen onNavigate={handleNavigate} token={resetToken} />;
   }
 
   return (
@@ -571,20 +728,9 @@ export default function App() {
         trackingActivo={trackingActivo}
         onQuickNotifications={enviarNotificacionConAcciones}
         onToggleTracking={toggleTracking}
-        isInvisible={invisibleMode}
-        onToggleInvisible={toggleInvisibleMode}
-        onOpenAdmin={() => {
-          setShowMainMenu(false);
-          setShowAdminPanel(true);
-        }}
-        onOpenChat={() => {
-          setShowMainMenu(false);
-          if (isPremium) {
-            setShowChat(true);
-          } else {
-            setShowPremiumPaywall(true);
-          }
-        }}
+        onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }} 
+        onOpenChat={() => { setShowMainMenu(false); setShowChat(true); }}
+        // Modo Repartiendo deshabilitado
       />
 
       {/* Paywall Premium */}
@@ -615,11 +761,7 @@ export default function App() {
       <View style={styles.topBar}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
-          {invisibleMode && (
-            <View style={styles.invisibleBadge}>
-              <Text style={styles.invisibleBadgeText}>👻 Invisible</Text>
-            </View>
-          )}
+          {/* Modo Repartiendo deshabilitado: sin badge */}
         </View>
         <View style={styles.topButtons}>
           {/* Botón único para abrir el menú principal */}
@@ -631,7 +773,7 @@ export default function App() {
           </TouchableOpacity>
 
           {/* Botón de perfil */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.topButton, { backgroundColor: "#34495e" }]}
             onPress={() => {
               setShowUserMenu(true);
@@ -643,9 +785,9 @@ export default function App() {
       </View>
 
       {/* Navbar de usuario */}
-      <UserNavbar 
-        user={user} 
-        onLogout={handleLogout} 
+      <UserNavbar
+        user={user}
+        onLogout={handleLogout}
         onUpdateUser={handleUpdateUser}
         visible={showUserMenu}
         onClose={() => setShowUserMenu(false)}
@@ -667,7 +809,10 @@ export default function App() {
             <Text style={styles.sosStatusText}>{tipoSOS} enviado</Text>
           )}
           <TouchableOpacity style={styles.cancelButton} onPress={cancelarSOS}>
-            <Text style={styles.cancelButtonText}>❌ Cancelar</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.cancelButtonText}>❌</Text>
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </View>
           </TouchableOpacity>
         </View>
       )}
@@ -679,22 +824,28 @@ export default function App() {
             style={[styles.sosButton, { backgroundColor: "#e74c3c" }]}
             onPress={() => activarSOS("robo")}
           >
-            <Text style={styles.sosButtonText}>🚨 SOS Robo</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.sosButtonText}>🚨</Text>
+              <Text style={styles.sosButtonText}>SOS ROBO</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sosButton, { backgroundColor: "#f39c12" }]}
             onPress={() => activarSOS("accidente")}
           >
-            <Text style={styles.sosButtonText}>🚑 SOS Accidente</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.sosButtonText}>🚑</Text>
+              <Text style={styles.sosButtonText}>SOS ACCIDENTE</Text>
+            </View>
           </TouchableOpacity>
         </View>
       )}
-      
+
       {/* Mapa en pantalla completa */}
       <View style={styles.mapContainer}>
         <MapRidersRealtime />
       </View>
-      
+
       {/* Panel deslizable de alertas */}
       <AlertasSOS />
     </View>
@@ -702,31 +853,31 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
+  container: {
     flex: 1,
     backgroundColor: "#1a1a1a"
   },
-  title: { 
-    fontSize: 28, 
-    marginBottom: 20, 
+  title: {
+    fontSize: 28,
+    marginBottom: 20,
     fontWeight: "bold",
     color: "#2c3e50",
     textAlign: "center"
   },
-  input: { 
-    borderWidth: 2, 
-    borderColor: "#e1e8ed", 
-    padding: 15, 
-    marginBottom: 15, 
-    width: "100%", 
+  input: {
+    borderWidth: 2,
+    borderColor: "#e1e8ed",
+    padding: 15,
+    marginBottom: 15,
+    width: "100%",
     borderRadius: 12,
     fontSize: 16,
     backgroundColor: "#ffffff",
     color: "#2c3e50"
   },
-  saveButton: { 
-    backgroundColor: "#3498db", 
-    padding: 15, 
+  saveButton: {
+    backgroundColor: "#3498db",
+    padding: 15,
     borderRadius: 12,
     width: "100%",
     shadowColor: "#000",
@@ -735,11 +886,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3
   },
-  saveButtonText: { 
-    color: "white", 
-    fontWeight: "bold", 
-    textAlign: "center", 
-    fontSize: 18 
+  saveButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+    fontSize: 18
   },
   // Nueva barra superior
   topBar: {
@@ -812,20 +963,20 @@ const styles = StyleSheet.create({
     fontWeight: "bold"
   },
   // Botones SOS
-  sosButtonsContainer: { 
+  sosButtonsContainer: {
     position: "absolute",
     top: 80,
     left: 20,
     right: 20,
-    flexDirection: "row", 
+    flexDirection: "row",
     justifyContent: "space-between",
     zIndex: 999
   },
-  sosButton: { 
-    flex: 1, 
-    padding: 15, 
-    marginHorizontal: 5, 
-    borderRadius: 12, 
+  sosButton: {
+    flex: 1,
+    padding: 15,
+    marginHorizontal: 5,
+    borderRadius: 12,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
@@ -833,14 +984,14 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 5
   },
-  sosButtonText: { 
-    color: "white", 
-    fontSize: 16, 
-    fontWeight: "bold" 
+  sosButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold"
   },
-  cancelButton: { 
-    backgroundColor: "#95a5a6", 
-    padding: 10, 
+  cancelButton: {
+    backgroundColor: "#95a5a6",
+    padding: 10,
     borderRadius: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -848,25 +999,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3
   },
-  cancelButtonText: { 
-    color: "white", 
-    fontSize: 14, 
-    fontWeight: "bold" 
+  cancelButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "bold"
   },
   // Contenedor del mapa
   mapContainer: {
     flex: 1,
     marginTop: 80 // Espacio para la barra superior
-  },
-  invisibleBadge: {
-    backgroundColor: '#2d3436',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  invisibleBadgeText: {
-    color: '#ecf0f1',
-    fontSize: 12,
-    fontWeight: '600'
   },
 });

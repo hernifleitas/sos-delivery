@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": "ridersos",
     "name": "Rider SOS Delivery",
     "slug": "sos-app",
     "version": "1.0.0",
@@ -26,12 +27,14 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.hernifleitas.sosapp",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -62,7 +65,9 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-notifications",
+      "expo-build-properties"
     ]
   }
 }

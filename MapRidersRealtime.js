@@ -1,6 +1,6 @@
 // MapRidersRealtimeOSM.js
 import React, { useState, useEffect, useRef } from "react";
-import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Text } from "react-native";
+import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Text, Linking } from "react-native";
 import { WebView } from "react-native-webview";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -9,6 +9,50 @@ import { getBackendURL } from "./config";
 
 const RIDERS_ENDPOINT = `${getBackendURL()}/riders`;
 const ALERTAS_ENDPOINT = `${getBackendURL()}/alertas`;
+
+// Umbrales para considerar cambios significativos
+const CHANGE_DISTANCE_METERS = 10; // no actualizar si el cambio es menor
+const CHANGE_TIME_MS = 5000; // considerar cambio si la última actualización es reciente pero con movimiento
+
+// Helpers geográficos
+function toRad(v){ return (v * Math.PI) / 180; }
+function haversineMeters(lat1, lon1, lat2, lon2){
+  const R = 6371000; // m
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+function bearingDegrees(lat1, lon1, lat2, lon2){
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  let brng = Math.atan2(y, x) * 180 / Math.PI; // -180..+180
+  brng = (brng + 360) % 360; // 0..360
+  return brng;
+}
+function bearingToCardinal(deg){
+  const dirs = ['N','NE','E','SE','S','SO','O','NO'];
+  const idx = Math.round(deg / 45) % 8;
+  return dirs[idx];
+}
+
+function hasSignificantChanges(prevArr, nextArr){
+  try {
+    if (!Array.isArray(prevArr) || !Array.isArray(nextArr)) return true;
+    if (prevArr.length !== nextArr.length) return true;
+    const prevMap = Object.fromEntries(prevArr.map(r => [r.riderId, r]));
+    for (const r of nextArr){
+      const p = prevMap[r.riderId];
+      if (!p) return true;
+      if (p.tipo !== r.tipo) return true;
+      // si cambió la posición notablemente
+      const dist = haversineMeters(p.lat, p.lng, r.lat, r.lng);
+      if (dist >= CHANGE_DISTANCE_METERS) return true;
+    }
+    return false;
+  } catch { return true; }
+}
 
 export default function MapRidersRealtimeOSM() {
   const [loading, setLoading] = useState(true);
@@ -38,6 +82,11 @@ export default function MapRidersRealtimeOSM() {
           });
         }
 
+        // Crear mapa previo para cálculos de velocidad/dirección
+        const prevById = Array.isArray(lastRidersRef.current)
+          ? Object.fromEntries(lastRidersRef.current.map(r => [r.riderId, r]))
+          : {};
+
         const riders = res.data.map(r => {
           // Si hay alerta activa para este rider, forzar ese tipo
           const tipoEfectivo = tiposPorRider[r.riderId] || r.tipo;
@@ -46,20 +95,23 @@ export default function MapRidersRealtimeOSM() {
           if (tipoEfectivo === "robo") sosColor = "red";
           else if (tipoEfectivo === "accidente") sosColor = "yellow";
           else if (tipoEfectivo === "pinchazo") sosColor = "yellow";
-          else if (tipoEfectivo === "normal") sosColor = "green";
+          else if (tipoEfectivo === "repartiendo") sosColor = "green";
 
-          let tipoDisplay = "Activo";
+          let tipoDisplay = "Repartiendo";
           switch (tipoEfectivo) {
             case 'robo': tipoDisplay = 'ROBO'; break;
             case 'accidente': tipoDisplay = 'ACCIDENTE'; break;
-            case 'normal': tipoDisplay = 'Activo'; break;
-            default: tipoDisplay = 'Activo';
+            case 'repartiendo': tipoDisplay = 'REPARTIENDO'; break;
+            default: tipoDisplay = 'Repartiendo';
           }
 
+          // Formatear fecha
           let fechaFormateada = "-";
+          let fechaMillis = null;
           if (r.fechaHora) {
             try {
               const fecha = new Date(r.fechaHora);
+              fechaMillis = fecha.getTime();
               fechaFormateada = fecha.toLocaleString('es-ES', {
                 year: 'numeric',
                 month: '2-digit',
@@ -71,6 +123,26 @@ export default function MapRidersRealtimeOSM() {
             } catch (error) {
               fechaFormateada = r.fechaHora;
             }
+          }
+
+          // Calcular velocidad y dirección si existe previo válido
+          let velocidadKmh = null;
+          let rumboCardinal = null;
+          const prev = prevById[r.riderId];
+          if (prev && typeof prev.lat === 'number' && typeof prev.lng === 'number' && prev.fechaHora) {
+            try {
+              const distM = haversineMeters(prev.lat, prev.lng, r.lat, r.lng);
+              const prevMs = new Date(prev.fechaHora).getTime();
+              const dtH = Math.max( ( (fechaMillis || 0) - (prevMs || 0) ) / 3600000, 0 );
+              velocidadKmh = (distM / 1000) / dtH;
+              const brng = bearingDegrees(prev.lat, prev.lng, r.lat, r.lng);
+              rumboCardinal = bearingToCardinal(brng);
+            } catch {}
+          }
+
+          const extraInfo = [];
+          if (typeof velocidadKmh === 'number' && isFinite(velocidadKmh)) {
+            extraInfo.push(`<div class="popup-info"><strong>Velocidad:</strong> ${velocidadKmh.toFixed(1)} km/h</div>`);
           }
 
           const getStatusClass = (tipo) => {
@@ -90,14 +162,21 @@ export default function MapRidersRealtimeOSM() {
               '<div class="popup-status ' + getStatusClass(tipoEfectivo) + '">' + tipoDisplay + '</div>' +
               '<div class="popup-info"><strong>Moto:</strong> ' + (r.moto || "-") + '</div>' +
               '<div class="popup-info"><strong>Color:</strong> ' + (r.color || "-") + '</div>' +
-              '<div class="popup-info"><strong>ID:</strong> ' + r.riderId + '</div>' +
               '<div class="popup-info"><strong>Última actualización:</strong> ' + fechaFormateada + '</div>' +
+              extraInfo.join('') +
+              '<div class="popup-actions" style="margin-top:8px;">' +
+                '<button style="padding:6px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;" ' +
+                  'onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type: \'navigate\', lat: ' + Number(r.lat) + ', lng: ' + Number(r.lng) + '}))"' +
+                '>Navegar</button>' +
+              '</div>' +
               '</div>'
           };
         });
 
+        // Guardar referencia local
+        const hadSignificant = hasSignificantChanges(lastRidersRef.current, riders);
         lastRidersRef.current = riders;
-        if (webReady) {
+        if (webReady && hadSignificant) {
           const payload = JSON.stringify(riders);
           webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
         }
@@ -144,6 +223,12 @@ export default function MapRidersRealtimeOSM() {
       // 2) Refrescar riders inmediatamente
       await fetchRiders();
 
+      // 2.bis) Forzar actualización visual aunque no se detecten cambios significativos
+      if (webReady && lastRidersRef.current) {
+        const payload = JSON.stringify(lastRidersRef.current);
+        webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+      }
+
       // 3) Enviar comando al WebView para recentrar
       if (webReady) {
         webviewRef.current?.injectJavaScript(`window.recenter(${lat}, ${lng}, 15); true;`);
@@ -151,6 +236,14 @@ export default function MapRidersRealtimeOSM() {
     } catch (e) {
       console.warn('No se pudo recentrar:', e?.message);
     }
+  };
+
+  const onFitAllPress = async () => {
+    try {
+      if (webReady) {
+        webviewRef.current?.injectJavaScript(`window.fitToAllRiders && window.fitToAllRiders(); true;`);
+      }
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -234,18 +327,42 @@ export default function MapRidersRealtimeOSM() {
 
           let markers = {};
 
+          function distanceMeters(a, b){
+            const toRad = v => v * Math.PI / 180;
+            const R = 6371000;
+            const dLat = toRad(b.lat - a.lat);
+            const dLng = toRad(b.lng - a.lng);
+            const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+            const c = 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+            return R * c;
+          }
+
           function animateMarker(marker, newLatLng) {
-            const start = marker.getLatLng();
-            const end = newLatLng;
-            const frames = 20;
-            let i = 0;
-            const interval = setInterval(() => {
-              i++;
-              const lat = start.lat + (end.lat - start.lat) * (i / frames);
-              const lng = start.lng + (end.lng - start.lng) * (i / frames);
-              marker.setLatLng([lat, lng]);
-              if (i === frames) clearInterval(interval);
-            }, 50);
+            try {
+              // Limpiar animación previa si existe
+              if (marker._animInt) { clearInterval(marker._animInt); marker._animInt = null; }
+              const start = marker.getLatLng();
+              const end = newLatLng;
+              const dist = distanceMeters({lat:start.lat,lng:start.lng},{lat:end.lat,lng:end.lng});
+              // Si el desplazamiento es mayor a 2km, setear directo para evitar animaciones largas
+              if (dist > 2000) { marker.setLatLng(end); return; }
+              // Si el desplazamiento es muy pequeño, ajustar directo
+              if (dist < 0.5) { marker.setLatLng(end); return; }
+              const frames = 20;
+              let i = 0;
+              marker._animInt = setInterval(() => {
+                i++;
+                const lat = start.lat + (end.lat - start.lat) * (i / frames);
+                const lng = start.lng + (end.lng - start.lng) * (i / frames);
+                marker.setLatLng([lat, lng]);
+                if (i >= frames) {
+                  clearInterval(marker._animInt);
+                  marker._animInt = null;
+                  // Asegurar posición final exacta
+                  marker.setLatLng(end);
+                }
+              }, 50);
+            } catch(e) { try { marker.setLatLng(newLatLng); } catch(_) {} }
           }
 
           function updateMarkers(riders) {
@@ -290,13 +407,14 @@ export default function MapRidersRealtimeOSM() {
 
               const markerColor = getMarkerColor(r.sosColor);
               const markerSize = (r.sosColor === 'red' || r.sosColor === 'yellow') ? 25 : 20;
+              const targetLatLng = L.latLng(Number(r.lat), Number(r.lng));
 
               if (markers[r.riderId]) {
-                animateMarker(markers[r.riderId], [r.lat, r.lng]);
+                animateMarker(markers[r.riderId], targetLatLng);
                 markers[r.riderId].setIcon(createCustomIcon(markerColor, markerSize));
                 markers[r.riderId].getPopup().setContent(r.popupContent);
               } else {
-                const marker = L.marker([r.lat, r.lng], { icon: createCustomIcon(markerColor, markerSize) })
+                const marker = L.marker(targetLatLng, { icon: createCustomIcon(markerColor, markerSize) })
                   .addTo(map)
                   .bindPopup(r.popupContent, { className: 'custom-popup', maxWidth: 300 });
                 if (r.sosColor === "red" || r.sosColor === "yellow") {
@@ -314,10 +432,19 @@ export default function MapRidersRealtimeOSM() {
             });
           }
 
+          // Fit bounds a todos los riders visibles
+          window.fitToAllRiders = function(){
+            try {
+              const ids = Object.keys(markers);
+              if (!ids.length) return;
+              const group = L.featureGroup(ids.map(id => markers[id]));
+              map.fitBounds(group.getBounds().pad(0.2));
+            } catch(e) { console.error('fitToAllRiders error', e); }
+          }
+
           // Funciones globales para que RN actualice marcadores o recentre
           window.updateRiders = function(riders){
             try {
-              // Si riders llega como objeto, úsalo; si es string JSON, parsear
               const data = Array.isArray(riders) ? riders : JSON.parse(riders);
               if (Array.isArray(data)) updateMarkers(data);
             } catch(e) { console.error('updateRiders error', e); }
@@ -337,6 +464,15 @@ export default function MapRidersRealtimeOSM() {
         originWhitelist={['*']}
         source={{ html }}
         style={styles.map}
+        onMessage={({ nativeEvent }) => {
+          try {
+            const msg = JSON.parse(nativeEvent.data || '{}');
+            if (msg?.type === 'navigate' && typeof msg.lat === 'number' && typeof msg.lng === 'number') {
+              const url = `https://www.google.com/maps/search/?api=1&query=${msg.lat},${msg.lng}`;
+              Linking.openURL(url);
+            }
+          } catch (e) {}
+        }}
         onLoadEnd={() => {
           setWebReady(true);
           if (lastRidersRef.current) {
@@ -348,6 +484,10 @@ export default function MapRidersRealtimeOSM() {
 
       <TouchableOpacity style={styles.fab} onPress={onRecenterPress} activeOpacity={0.8}>
         <Text style={styles.fabText}>⟳</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.fabFit} onPress={onFitAllPress} activeOpacity={0.8}>
+        <Text style={styles.fabText}>☍</Text>
       </TouchableOpacity>
     </View>
   );
@@ -361,6 +501,22 @@ const styles = StyleSheet.create({
     right: 10,
     bottom: 220,
     backgroundColor: '#e74c3c',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  fabFit: {
+    position: 'absolute',
+    right: 70,
+    bottom: 220,
+    backgroundColor: '#34495e',
     width: 52,
     height: 52,
     borderRadius: 26,
