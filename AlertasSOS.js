@@ -1,4 +1,3 @@
-// AlertasSOS.js
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, useColorScheme, Dimensions, PanResponder, Animated } from "react-native";
 import axios from "axios";

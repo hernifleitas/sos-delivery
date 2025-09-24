@@ -83,19 +83,10 @@ export default function MainMenu({
             <Text style={styles.optionText}>🔔 Notificaciones rápidas</Text>
             <Text style={styles.subtitle}>Enviar/mostrar accesos rápidos de SOS</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.option} onPress={onToggleInvisible}>
-            <Text style={styles.optionText}>
-              {isInvisible ? '👻 Desactivar Modo Invisible' : '👻 Activar Modo Invisible'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {isInvisible ? 'Actualmente NO se envía tu ubicación al backend' : 'Se enviará tu ubicación al backend para el mapa'}
-            </Text>
-          </TouchableOpacity>
-
+          
           <TouchableOpacity style={styles.option} onPress={onToggleTracking}>
             <Text style={styles.optionText}>
-              {trackingActivo ? '🛑 Desactivar Tracking' : '🟢 Activar Tracking'}
+              {trackingActivo ? '🛑 Desactivar Seguimiento' : '🟢 Activar Seguimiento'}
             </Text>
             <Text style={styles.subtitle}>
               {trackingActivo ? 'Detener seguimiento de ubicación' : 'Iniciar seguimiento en segundo plano'}

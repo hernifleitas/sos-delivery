@@ -1,7 +1,7 @@
 {
   "name": "sos-backend",
   "version": "1.0.0",
-  "description": "Backend SOS Delivery con Express y Telegram Bot",
+  "description": "SOS DELIVERY RIDER ",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

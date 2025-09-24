@@ -11,6 +11,25 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
   const [loading, setLoading] = useState(false);
   const listRef = useRef(null);
 
+  // Utilidad: fusionar mensajes por id, evitando duplicados y manteniendo orden DESC por created_at
+  const mergeUniqueById = (base = [], incoming = []) => {
+    const map = new Map();
+    [...base, ...incoming].forEach((m) => {
+      if (!m || (!m.id && !m.created_at)) return; // proteger entradas inválidas
+      const key = m.id ?? `${m.user_id || 'u'}-${m.created_at || Date.now()}`;
+      // preferir el mensaje más nuevo si hay conflicto
+      const prev = map.get(key);
+      if (!prev) {
+        map.set(key, m);
+      } else {
+        const prevTs = new Date(prev.created_at || 0).getTime();
+        const curTs = new Date(m.created_at || 0).getTime();
+        map.set(key, curTs >= prevTs ? { ...prev, ...m } : prev);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  };
+
   useEffect(() => {
     if (!visible) return;
 
@@ -23,9 +42,8 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         // Historial inicial
         const hist = await ChatService.fetchHistory({ room: 'global', limit: 50 });
         if (mounted && hist?.success) {
-          setMessages(hist.messages);
-          // scroll al final luego del set
-          setTimeout(() => listRef.current?.scrollToEnd?.({ animated: false }), 0);
+          const uniqueOrdered = mergeUniqueById([], hist.messages || []);
+          setMessages(uniqueOrdered);
         }
         // Suscripciones
         ChatService.on('message:new', handleIncoming);
@@ -43,18 +61,24 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       mounted = false;
       ChatService.off('message:new', handleIncoming);
       ChatService.off('message:deleted', handleDeleted);
-      // No desconectamos el socket para permitir retorno rápido; si querés, usa ChatService.disconnect()
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const handleIncoming = (msg) => {
-    setMessages((prev) => [...prev, msg]);
-    setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 50);
+    if (!msg) return;
+    setMessages((prev) => {
+      // Evitar duplicados (a veces llegan por socket y por fetch/paginación)
+      const merged = mergeUniqueById(prev, [msg]);
+      return merged;
+    });
   };
 
   const handleDeleted = ({ id }) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, content: "Un administrador eliminó este mensaje", deleted: true } : m
+      )
+    );
   };
 
   const send = async () => {
@@ -74,17 +98,25 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
   const onLongPressMessage = (item) => {
     if (!isAdmin) return;
     Alert.alert(
-      'Borrar mensaje',
-      `¿Querés borrar este mensaje de ${item?.nombre}?`,
+      'Eliminar mensaje',
+      `¿Querés marcar este mensaje de ${item?.nombre} como eliminado?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Borrar',
+          text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
+            // Usar deleteMessage del servicio (no existe editMessage)
             const ack = await ChatService.deleteMessage(item.id);
             if (!ack?.success) {
-              Alert.alert('Error', ack?.message || 'No se pudo borrar el mensaje');
+              Alert.alert('Error', ack?.message || 'No se pudo editar el mensaje');
+            } else {
+              // Actualizamos localmente
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === item.id ? { ...m, content: "Un administrador eliminó este mensaje", deleted: true } : m
+                )
+              );
             }
           },
         },
@@ -109,7 +141,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     closeText: { fontSize: 18, color: '#e74c3c', fontWeight: 'bold' },
 
     list: { flex: 1 },
-    msgRow: { paddingHorizontal: 12, paddingVertical: 8 },
+    msgRow: { paddingHorizontal: 12, paddingVertical: 8, marginVertical: 2 },
     msgBubble: {
       borderRadius: 12,
       padding: 10,
@@ -123,11 +155,22 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       alignSelf: 'flex-start',
       backgroundColor: isDarkMode ? '#2b2b2b' : '#ecf0f1'
     },
+    deletedBubble: {
+      backgroundColor: isDarkMode ? '#1f1f1f' : '#f0f0f0',
+      alignSelf: 'center'
+    },
     msgHeader: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 2 },
     meta: { fontSize: 12, color: isDarkMode ? '#ddd' : '#2c3e50', marginRight: 6 },
     metaOther: { color: isDarkMode ? '#aaa' : '#7f8c8d' },
     msgText: { fontSize: 15, color: '#ffffff' },
     msgTextOther: { color: isDarkMode ? '#fff' : '#2c3e50' },
+    deletedText: {
+      fontSize: 13,
+      fontStyle: 'italic',
+      color: isDarkMode ? '#b0b0b0' : '#7f8c8d',
+      textAlign: 'center',
+      letterSpacing: 0.3
+    },
 
     inputBar: {
       flexDirection: 'row',
@@ -177,17 +220,27 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     const fecha = item?.created_at ? new Date(item.created_at) : null;
     const hora = fecha ? `${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}` : '';
     const isOwn = item?.user_id && currentUserId && Number(item.user_id) === Number(currentUserId);
-    const bubbleStyle = [styles.msgBubble, isOwn ? styles.ownBubble : styles.otherBubble];
+    const isDeleted = item?.deleted || item?.content === 'Un administrador eliminó este mensaje';
+    const bubbleStyle = [
+      styles.msgBubble,
+      isDeleted ? styles.deletedBubble : (isOwn ? styles.ownBubble : styles.otherBubble)
+    ];
     const metaStyle = [styles.meta, !isOwn && styles.metaOther];
-    const textStyle = [styles.msgText, !isOwn && styles.msgTextOther];
+    const textStyle = isDeleted
+      ? [styles.deletedText]
+      : [styles.msgText, !isOwn && styles.msgTextOther];
     return (
-      <TouchableOpacity style={styles.msgRow} onLongPress={() => onLongPressMessage(item)} delayLongPress={300}>
+      <TouchableOpacity
+        style={styles.msgRow}
+        onLongPress={isDeleted ? undefined : () => onLongPressMessage(item)}
+        delayLongPress={300}
+        disabled={isDeleted}
+      >
         <View style={bubbleStyle}>
           <View style={styles.msgHeader}>
-            <Text style={metaStyle}>👤 {item?.nombre || 'Usuario'}</Text>
-            <Text style={metaStyle}>🏍️ {item?.moto || 'Moto'}</Text>
-            <Text style={metaStyle}>🎨 {item?.color || 'Color'}</Text>
-            {!!hora && <Text style={metaStyle}>⏰ {hora}</Text>}
+            <Text style={metaStyle}> {item?.nombre || 'Usuario'}</Text>
+            <Text style={metaStyle}> {item?.moto || 'Moto'}</Text>
+            {!!hora && <Text style={metaStyle}> {hora}</Text>}
           </View>
           <Text style={textStyle}>{item.content}</Text>
         </View>
@@ -197,11 +250,15 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
+      >
         <View style={styles.header}>
-          <Text style={styles.title}>💬 ChatRiders</Text>
+          <Text style={styles.title}> ChatRiders</Text>
           <TouchableOpacity style={styles.close} onPress={onClose}>
-            <Text style={styles.closeText}>✕</Text>
+            <Text style={styles.closeText}> </Text>
           </TouchableOpacity>
         </View>
 
@@ -210,22 +267,29 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
           style={styles.list}
           contentContainerStyle={{ paddingBottom: 100 }}
           data={messages}
-          keyExtractor={(item) => String(item.id)}
+          inverted={true}
+          keyExtractor={(item) => String(item?.id ?? `${item?.user_id || 'u'}-${item?.created_at || Math.random()}`)}
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
           refreshing={loading}
           onRefresh={async () => {
             try {
               setLoading(true);
-              const before = messages?.[0]?.created_at || null;
+              // En orden descendente, el último elemento es el más viejo
+              const before = messages?.[messages.length - 1]?.created_at || null;
               const resp = await ChatService.fetchHistory({ room: 'global', before, limit: 50 });
               if (resp?.success && resp.messages?.length) {
-                setMessages((prev) => [...resp.messages, ...prev]);
+                setMessages((prev) => mergeUniqueById(prev, resp.messages));
               }
             } finally {
               setLoading(false);
             }
           }}
+          removeClippedSubviews={false}
+          initialNumToRender={20}
+          windowSize={10}
+          maxToRenderPerBatch={20}
+          updateCellsBatchingPeriod={50}
         />
 
         <View style={styles.inputBar}>
