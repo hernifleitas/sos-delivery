@@ -301,15 +301,18 @@ app.get("/alertas", (req, res) => {
   res.json(alertasArray);
 });
 
+// Configuración de rutas API
+const API_PREFIX = '/api';
+
 // Rutas de autenticación
-app.use('/auth', authRoutes);
+app.use(`${API_PREFIX}/auth`, authRoutes);
 // Rutas de chat
-app.use('/chat', chatRoutes);
+app.use(`${API_PREFIX}/chat`, chatRoutes);
 // Rutas de notificaciones
-app.use('/notifications', notificationsRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 
 // Middleware para verificar autenticación en rutas protegidas
-app.use('/protected', authService.authenticateToken.bind(authService));
+app.use(`${API_PREFIX}/protected`, authService.authenticateToken.bind(authService));
 
 const PORT = process.env.PORT || 10000;
 const HOST = process.env.HOST || '0.0.0.0'; 

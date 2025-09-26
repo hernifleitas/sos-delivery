@@ -307,4 +307,21 @@ router.post('/admin/make-admin/:userId', authService.authenticateToken.bind(auth
   }
 });
 
+// Obtener todos los usuarios (solo admin)
+router.get('/admin/all-users', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
+  try {
+    const users = await database.getAllUsers();
+    res.json({
+      success: true,
+      users: users
+    });
+  } catch (error) {
+    console.error('Error obteniendo usuarios:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener los usuarios'
+    });
+  }
+});
+
 module.exports = router;
