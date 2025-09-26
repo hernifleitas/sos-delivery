@@ -9,6 +9,15 @@ class AuthService {
     this.jwtExpiresIn = '7d'; // Token válido por 7 días
   }
 
+  // Helper: verificar si es Premium (o Admin)
+  async isPremium(userId) {
+    try {
+      return await database.isPremium(userId);
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Generar hash de contraseña
   async hashPassword(password) {
     const saltRounds = 12;
@@ -154,7 +163,8 @@ class AuthService {
           email: user.email,
           moto: user.moto,
           color: user.color,
-          created_at: user.created_at
+          created_at: user.created_at,
+          role: user.role || 'user'
         },
         token
       };
@@ -194,7 +204,8 @@ class AuthService {
           email: user.email,
           moto: user.moto,
           color: user.color,
-          created_at: user.created_at
+          created_at: user.created_at,
+          role: user.role || 'user'
         }
       };
     } catch (error) {
@@ -566,5 +577,7 @@ class AuthService {
     }
   }
 }
+
+
 
 module.exports = new AuthService();

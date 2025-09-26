@@ -5,8 +5,8 @@ import { WebView } from "react-native-webview";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from 'expo-location';
+import { iniciarUbicacionBackground, detenerUbicacionBackground } from "./tasks";
 import { getBackendURL } from "./config";
-
 const RIDERS_ENDPOINT = `${getBackendURL()}/riders`;
 const ALERTAS_ENDPOINT = `${getBackendURL()}/alertas`;
 
@@ -15,34 +15,34 @@ const CHANGE_DISTANCE_METERS = 10; // no actualizar si el cambio es menor
 const CHANGE_TIME_MS = 5000; // considerar cambio si la última actualización es reciente pero con movimiento
 
 // Helpers geográficos
-function toRad(v){ return (v * Math.PI) / 180; }
-function haversineMeters(lat1, lon1, lat2, lon2){
+function toRad(v) { return (v * Math.PI) / 180; }
+function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000; // m
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
-function bearingDegrees(lat1, lon1, lat2, lon2){
+function bearingDegrees(lat1, lon1, lat2, lon2) {
   const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
   let brng = Math.atan2(y, x) * 180 / Math.PI; // -180..+180
   brng = (brng + 360) % 360; // 0..360
   return brng;
 }
-function bearingToCardinal(deg){
-  const dirs = ['N','NE','E','SE','S','SO','O','NO'];
+function bearingToCardinal(deg) {
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
   const idx = Math.round(deg / 45) % 8;
   return dirs[idx];
 }
 
-function hasSignificantChanges(prevArr, nextArr){
+function hasSignificantChanges(prevArr, nextArr) {
   try {
     if (!Array.isArray(prevArr) || !Array.isArray(nextArr)) return true;
     if (prevArr.length !== nextArr.length) return true;
     const prevMap = Object.fromEntries(prevArr.map(r => [r.riderId, r]));
-    for (const r of nextArr){
+    for (const r of nextArr) {
       const p = prevMap[r.riderId];
       if (!p) return true;
       if (p.tipo !== r.tipo) return true;
@@ -54,12 +54,30 @@ function hasSignificantChanges(prevArr, nextArr){
   } catch { return true; }
 }
 
-export default function MapRidersRealtimeOSM() {
+export default function MapRidersRealtimeOSM({ showMarkers }) {
   const [loading, setLoading] = useState(true);
   const webviewRef = useRef(null);
   const [webReady, setWebReady] = useState(false);
   const lastRidersRef = useRef(null);
+  // Cache para evitar vaciar el mapa con respuestas temporales vacías
+  const lastNonEmptyRidersRef = useRef([]);
 
+
+  const myRiderIdRef = useRef(null);
+  useEffect(() => {
+    (async () => {
+      const rid = await AsyncStorage.getItem('riderId');
+      if (rid) {
+        myRiderIdRef.current = rid;
+        // Si el WebView ya está listo, inyectar myRiderId
+        if (webReady) {
+          try {
+            webviewRef.current?.injectJavaScript(`window.myRiderId = ${JSON.stringify(rid)}; true;`);
+          } catch (_) {}
+        }
+      }
+    })();
+  }, [webReady]);
   const fetchRiders = async () => {
     try {
       const [res, alertasRes] = await Promise.all([
@@ -72,7 +90,7 @@ export default function MapRidersRealtimeOSM() {
           headers: { 'Content-Type': 'application/json' }
         }).catch(() => ({ data: [] }))
       ]);
-      
+
       if (res.data && Array.isArray(res.data)) {
         // Mapa de tipos activos por rider desde /alertas
         const tiposPorRider = {};
@@ -133,11 +151,11 @@ export default function MapRidersRealtimeOSM() {
             try {
               const distM = haversineMeters(prev.lat, prev.lng, r.lat, r.lng);
               const prevMs = new Date(prev.fechaHora).getTime();
-              const dtH = Math.max( ( (fechaMillis || 0) - (prevMs || 0) ) / 3600000, 0 );
+              const dtH = Math.max(((fechaMillis || 0) - (prevMs || 0)) / 3600000, 0);
               velocidadKmh = (distM / 1000) / dtH;
               const brng = bearingDegrees(prev.lat, prev.lng, r.lat, r.lng);
               rumboCardinal = bearingToCardinal(brng);
-            } catch {}
+            } catch { }
           }
 
           const extraInfo = [];
@@ -146,7 +164,7 @@ export default function MapRidersRealtimeOSM() {
           }
 
           const getStatusClass = (tipo) => {
-            switch(tipo) {
+            switch (tipo) {
               case 'robo': return 'status-robo';
               case 'pinchazo': return 'status-pinchazo';
               default: return 'status-normal';
@@ -165,32 +183,39 @@ export default function MapRidersRealtimeOSM() {
               '<div class="popup-info"><strong>Última actualización:</strong> ' + fechaFormateada + '</div>' +
               extraInfo.join('') +
               '<div class="popup-actions" style="margin-top:8px;">' +
-                '<button style="padding:6px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;" ' +
-                  'onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type: \'navigate\', lat: ' + Number(r.lat) + ', lng: ' + Number(r.lng) + '}))"' +
-                '>Navegar</button>' +
+              '<button style="padding:6px 10px;background:#2ecc71;color:#fff;border:none;border-radius:6px;cursor:pointer;" ' +
+              'onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type: \'navigate\', lat: ' + Number(r.lat) + ', lng: ' + Number(r.lng) + '}))"' +
+              '>Navegar</button>' +
               '</div>' +
               '</div>'
           };
         });
+        // Si la lista viene vacía, no vaciar el mapa: usar la última no vacía
+        let listToUse = riders;
+        if (!Array.isArray(riders) || riders.length === 0) {
+          listToUse = Array.isArray(lastNonEmptyRidersRef.current) ? lastNonEmptyRidersRef.current : [];
+        } else {
+          // Actualizar cache no vacía
+          lastNonEmptyRidersRef.current = riders;
+        }
 
-        // Guardar referencia local
-        const hadSignificant = hasSignificantChanges(lastRidersRef.current, riders);
-        lastRidersRef.current = riders;
-        if (webReady && hadSignificant) {
-          const payload = JSON.stringify(riders);
+        // Guardar referencia local e inyectar SIEMPRE cuando el WebView está listo
+        const hadSignificant = hasSignificantChanges(lastRidersRef.current, listToUse);
+        lastRidersRef.current = listToUse;
+        if (webReady) {
+          const shouldShowMarkers = (showMarkers ?? true);
+          const listForMap = filterSelfWhenNotRepartiendo(listToUse);
+          const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
           webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
         }
-        setLoading(false);
-      } else {
-        console.warn("Respuesta del servidor no válida:", res.data);
         setLoading(false);
       }
     } catch (err) {
       console.error("Error fetching riders:", err.message);
-      
+
       const ultimoError = await AsyncStorage.getItem('ultimoErrorMapa');
       const ahora = Date.now();
-      
+
       if (!ultimoError || (ahora - parseInt(ultimoError)) > 30000) {
         const errorMsg = JSON.stringify([
           { error: true, message: "Error de conexión con el servidor. Verifica que el backend esté funcionando." }
@@ -204,10 +229,117 @@ export default function MapRidersRealtimeOSM() {
         }
         await AsyncStorage.setItem('ultimoErrorMapa', ahora.toString());
       }
-      
+
       setLoading(false);
     }
   };
+
+  const [isRepartiendoLocal, setIsRepartiendoLocal] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const cur = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
+      setIsRepartiendoLocal(cur);
+    })();
+  }, []);
+
+  const toggleRepartiendoLocal = async () => {
+    try {
+      const current = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
+      const next = !current;
+      await AsyncStorage.setItem('repartiendoActivo', next ? 'true' : 'false');
+
+      if (next) {
+        try {
+          const perm = await Location.requestForegroundPermissionsAsync();
+          let coords = null;
+          if (perm.status === 'granted') {
+            const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            await AsyncStorage.setItem('ultimaUbicacion', JSON.stringify(coords));
+            await AsyncStorage.setItem('ultimaUbicacionTimestamp', Date.now().toString());
+          } else {
+            const last = await AsyncStorage.getItem('ultimaUbicacion');
+            if (last) coords = JSON.parse(last);
+          }
+
+          if (coords) {
+            let riderId = await AsyncStorage.getItem('riderId');
+            if (!riderId) {
+              riderId = `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+              await AsyncStorage.setItem('riderId', riderId);
+            }
+            // Guardar también en ref local e inyectar en WebView para filtrado
+            try {
+              myRiderIdRef.current = riderId;
+              if (webReady) {
+                webviewRef.current?.injectJavaScript(`window.myRiderId = ${JSON.stringify(riderId)}; true;`);
+              }
+            } catch (_) {}
+            const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
+            const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
+            let color = (await AsyncStorage.getItem('color')) || 'No especificado';
+            color = (color || '').trim() !== '' ? color : 'No especificado';
+
+            const authToken = await AsyncStorage.getItem('authToken');
+            await axios.post(`${getBackendURL()}/sos`, {
+              riderId,
+              nombre,
+              moto,
+              color,
+              ubicacion: { lat: coords.lat, lng: coords.lng },
+              fechaHora: new Date().toISOString(),
+              tipo: 'normal',
+            }, {
+              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+              timeout: 15000,
+            });
+
+            await AsyncStorage.setItem('lastNormalSentTs', Date.now().toString());
+          }
+          // Muy importante: asegurar tracking en segundo plano activo para que se actualice tu ubicación
+          try { await iniciarUbicacionBackground(); } catch (_) {}
+          // Refrescar inmediatamente los riders y actualizar el mapa para evitar estados intermedios
+          try {
+            await fetchRiders();
+            if (webReady && lastRidersRef.current) {
+              const shouldShowMarkers = (showMarkers ?? true);
+              const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
+              const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
+              webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+            }
+          } catch (_) {}
+        } catch (e) {
+          console.warn('No se pudo enviar ubicación inmediata al activar Repartiendo:', e?.message);
+        }
+      } else {
+        // Opcional: al desactivar, puedes detener el tracking para ahorrar batería
+        try { await detenerUbicacionBackground(); } catch (_) {}
+        // Refrescar mapa para que aplique el filtro y no muestre mi marcador si no hay SOS
+        try {
+          if (webReady && lastRidersRef.current) {
+            const shouldShowMarkers = (showMarkers ?? true);
+            const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
+            const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
+            webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('No se pudo alternar repartiendoActivo:', e?.message);
+    }
+  };
+
+
+  // Ocultar SOLO mi marcador cuando "No repartiendo", salvo SOS (robo/accidente)
+const filterSelfWhenNotRepartiendo = (list) => {
+  const myId = myRiderIdRef.current;
+  if (!myId) return list; // si aún no sabemos tu id, no filtramos
+  if (isRepartiendoLocal) return list; // repartiendo ON: no se filtra
+  return list.filter(r =>
+    r.riderId !== myId || (r.riderId === myId && (r.tipo === 'robo' || r.tipo === 'accidente'))
+  );
+};
 
   const onRecenterPress = async () => {
     try {
@@ -223,9 +355,14 @@ export default function MapRidersRealtimeOSM() {
       // 2) Refrescar riders inmediatamente
       await fetchRiders();
 
-      // 2.bis) Forzar actualización visual aunque no se detecten cambios significativos
-      if (webReady && lastRidersRef.current) {
-        const payload = JSON.stringify(lastRidersRef.current);
+      // 2.bis) Forzar actualización visual (con filtro y respaldo no vacío)
+      if (webReady) {
+        const shouldShowMarkers = (showMarkers ?? true);
+        const baseList = (Array.isArray(lastRidersRef.current) && lastRidersRef.current.length > 0)
+          ? lastRidersRef.current
+          : (Array.isArray(lastNonEmptyRidersRef.current) ? lastNonEmptyRidersRef.current : []);
+        const listForMap = filterSelfWhenNotRepartiendo(baseList);
+        const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
         webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
       }
 
@@ -243,14 +380,25 @@ export default function MapRidersRealtimeOSM() {
       if (webReady) {
         webviewRef.current?.injectJavaScript(`window.fitToAllRiders && window.fitToAllRiders(); true;`);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
+
 
   useEffect(() => {
     fetchRiders();
     const interval = setInterval(fetchRiders, 5000);
     return () => clearInterval(interval);
   }, []);
+
+ useEffect(() => {
+  if (!webReady) return;
+  // Evitar enviar lista vacía al WebView (causa borrado total y "parpadeo")
+  if (!Array.isArray(lastRidersRef.current) || lastRidersRef.current.length === 0) return;
+  const shouldShowMarkers = (showMarkers ?? true);
+  const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
+  const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
+  webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+}, [showMarkers, webReady, isRepartiendoLocal]);
 
   if (loading) {
     return (
@@ -318,6 +466,9 @@ export default function MapRidersRealtimeOSM() {
       <body>
         <div id="map"></div>
         <script>
+          // Variables globales para filtrado adicional en el WebView
+          window.myRiderId = null;
+          window.isRepartiendo = false;
           const map = L.map('map').setView([-34.833, -58.449], 15);
           L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -446,7 +597,19 @@ export default function MapRidersRealtimeOSM() {
           window.updateRiders = function(riders){
             try {
               const data = Array.isArray(riders) ? riders : JSON.parse(riders);
-              if (Array.isArray(data)) updateMarkers(data);
+              if (Array.isArray(data)) {
+                // Filtro adicional: ocultar mi propio marcador cuando NO estoy repartiendo, salvo SOS
+                const selfId = window.myRiderId;
+                const isRep = !!window.isRepartiendo;
+                const filtered = selfId
+                  ? data.filter(r => {
+                      if (r.riderId !== selfId) return true;
+                      if (isRep) return true;
+                      return (r.tipo === 'robo' || r.tipo === 'accidente');
+                    })
+                  : data;
+                updateMarkers(filtered);
+              }
             } catch(e) { console.error('updateRiders error', e); }
           }
           window.recenter = function(lat, lng, zoom){
@@ -471,13 +634,26 @@ export default function MapRidersRealtimeOSM() {
               const url = `https://www.google.com/maps/search/?api=1&query=${msg.lat},${msg.lng}`;
               Linking.openURL(url);
             }
-          } catch (e) {}
+          } catch (e) { }
         }}
         onLoadEnd={() => {
           setWebReady(true);
-          if (lastRidersRef.current) {
-            const payload = JSON.stringify(lastRidersRef.current);
+          const shouldShowMarkers = (showMarkers ?? true);
+          // Inyectar flags globales para filtrado en WebView
+          try {
+            const rid = myRiderIdRef.current ? JSON.stringify(myRiderIdRef.current) : 'null';
+            const rep = !!isRepartiendoLocal;
+            webviewRef.current?.injectJavaScript(`window.myRiderId = ${rid}; window.isRepartiendo = ${rep}; true;`);
+          } catch (_) {}
+          const baseList = (Array.isArray(lastRidersRef.current) && lastRidersRef.current.length > 0)
+            ? lastRidersRef.current
+            : (Array.isArray(lastNonEmptyRidersRef.current) ? lastNonEmptyRidersRef.current : []);
+          if (shouldShowMarkers && Array.isArray(baseList) && baseList.length > 0) {
+            const listForMap = filterSelfWhenNotRepartiendo(baseList);
+            const payload = JSON.stringify(listForMap);
             webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+          } else if (!shouldShowMarkers) {
+            webviewRef.current?.injectJavaScript(`window.updateRiders([]); true;`);
           }
         }}
       />
@@ -488,6 +664,46 @@ export default function MapRidersRealtimeOSM() {
 
       <TouchableOpacity style={styles.fabFit} onPress={onFitAllPress} activeOpacity={0.8}>
         <Text style={styles.fabText}>☍</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.fabToggle,
+          { backgroundColor: isRepartiendoLocal ? '#27ae60' : '#7f8c8d' }
+        ]}
+        onPress={async () => {
+          // 1) Alternar UI inmediatamente (optimista)
+          const next = !isRepartiendoLocal;
+          setIsRepartiendoLocal(next);
+          // Actualizar flag global en WebView inmediatamente
+          try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${next}; true;`); } catch (_) {}
+
+          // 2) Ejecutar la lógica real (guarda en storage y, si next es true, envía ubicación)
+          try {
+            await toggleRepartiendoLocal();
+            // Si quisieras “confirmar” desde storage, podrías re-leer:
+            // const cur = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
+            // setIsRepartiendoLocal(cur);
+            // 3) Forzar actualización visual inmediata tras el toggle
+            try {
+              if (webReady && lastRidersRef.current) {
+                const shouldShowMarkers = (showMarkers ?? true);
+                const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
+                const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
+                webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+              }
+            } catch (_) {}
+          } catch (e) {
+            // En caso de error, revertir UI
+            setIsRepartiendoLocal(!next);
+            // Revertir flag global
+            try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${!next}; true;`); } catch (_) {}
+          }
+        }}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabText}>
+          {isRepartiendoLocal ? 'Repartiendo' : 'No repartiendo'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -518,6 +734,21 @@ const styles = StyleSheet.create({
     bottom: 220,
     backgroundColor: '#34495e',
     width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  fabToggle: {
+    position: 'absolute',
+    right: 200,
+    bottom: 220,
+    width: 212,
     height: 52,
     borderRadius: 26,
     justifyContent: 'center',

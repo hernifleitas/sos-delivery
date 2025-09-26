@@ -11,8 +11,6 @@ export default function MainMenu({
   onToggleTracking,
   onOpenAdmin,
   onOpenChat,
-  isInvisible = false,
-  onToggleInvisible
 }) {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
@@ -83,7 +81,7 @@ export default function MainMenu({
             <Text style={styles.optionText}>🔔 Notificaciones rápidas</Text>
             <Text style={styles.subtitle}>Enviar/mostrar accesos rápidos de SOS</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={styles.option} onPress={onToggleTracking}>
             <Text style={styles.optionText}>
               {trackingActivo ? '🛑 Desactivar Seguimiento' : '🟢 Activar Seguimiento'}

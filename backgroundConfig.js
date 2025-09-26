@@ -164,14 +164,7 @@ export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
 const enviarUbicacionInmediata = async (tipo) => {
   try {
     const axios = require('axios');
-    // Guardas de Modo Invisible: no enviar si no hay SOS activo
-    const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
-    const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
-    if (invisible && !sosActivoFlag) {
-      console.log('Modo Invisible activo (background): no se envía ubicación (sin SOS).');
-      return;
-    }
- 
+    
     const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
     let ubicacion = { lat: 0, lng: 0 };
     if (ubicacionString) ubicacion = JSON.parse(ubicacionString);
@@ -401,8 +394,13 @@ export const manejarNotificacionSOS = async (notification) => {
     const { data } = notification.request.content;
     
     if (data?.type === 'sos_quick_access') {
-      // Activar SOS de robo por defecto
-      await activarSOSDesdeNotificacion('robo');
+      // NO activar SOS automáticamente. Requerir acción explícita en botones.
+      const sosActivo = await AsyncStorage.getItem('sosActivo');
+      if (sosActivo !== 'true') {
+        try { await Notifications.dismissAllNotificationsAsync(); } catch (_) {}
+        // Volver a mostrar la notificación con acciones para que el usuario elija
+        await enviarNotificacionSOS();
+      }
     }
   } catch (error) {
     console.error('Error manejando notificación SOS:', error);

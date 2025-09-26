@@ -18,25 +18,42 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Generar riderId simple
+// Generar riderId aleatorio (fallback)
 const generarRiderId = () => `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+// Obtener o crear un riderId estable por usuario autenticado
+const getOrCreateRiderId = async () => {
+  try {
+    // Si ya existe en storage, usarlo
+    let rid = await AsyncStorage.getItem("riderId");
+    if (rid) return rid;
+    // Si hay userId autenticado, derivar un riderId estable
+    const userId = await AsyncStorage.getItem("userId");
+    if (userId) {
+      rid = `user-${userId}`;
+      await AsyncStorage.setItem("riderId", rid);
+      return rid;
+    }
+    // Fallback aleatorio
+    rid = generarRiderId();
+    await AsyncStorage.setItem("riderId", rid);
+    return rid;
+  } catch (_) {
+    const rid = generarRiderId();
+    await AsyncStorage.setItem("riderId", rid);
+    return rid;
+  }
+};
 
 // Función para enviar notificación local con control de duplicados
 const enviarNotificacion = async (titulo, mensaje, id = null) => {
   try {
-    // Generar ID único si no se proporciona
     const notificationId = id || `${titulo}-${Date.now()}`;
-    
-    // Verificar si ya se envió esta notificación recientemente
     const ultimaNotificacion = await AsyncStorage.getItem(`ultimaNotificacion_${notificationId}`);
     const ahora = Date.now();
-    
     if (ultimaNotificacion && (ahora - parseInt(ultimaNotificacion)) < 30000) {
-      // No enviar si se envió hace menos de 30 segundos
-      console.log(`Notificación ${notificationId} omitida (duplicado)`);
       return;
     }
-    
     await Notifications.scheduleNotificationAsync({
       content: {
         title: titulo,
@@ -45,10 +62,8 @@ const enviarNotificacion = async (titulo, mensaje, id = null) => {
         priority: Notifications.AndroidNotificationPriority.HIGH,
         data: { notificationId }
       },
-      trigger: null, // Enviar inmediatamente
+      trigger: null,
     });
-    
-    // Guardar timestamp de la última notificación
     await AsyncStorage.setItem(`ultimaNotificacion_${notificationId}`, ahora.toString());
   } catch (error) {
     console.error("Error enviando notificación:", error);
@@ -71,28 +86,52 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   await AsyncStorage.setItem("ultimaUbicacion", JSON.stringify(coords));
   await AsyncStorage.setItem("ultimaUbicacionTimestamp", Date.now().toString());
 
-  // Respetar modo invisible: no enviar nada al backend
-  const invisibleMode = await AsyncStorage.getItem('invisibleMode');
-  if (invisibleMode === 'true') {
-    console.log('Modo invisible activo: no se envía ubicación al backend (background task).');
-    return;
-  }
-
-  const sosActivo = await AsyncStorage.getItem("sosActivo");
+  const sosActivoValue = await AsyncStorage.getItem("sosActivo");
 
   // Si hay SOS activo, enviar con lógica de SOS
-  if (sosActivo === "true") {
-    let riderId = await AsyncStorage.getItem("riderId");
-    if (!riderId) {
-      riderId = generarRiderId();
-      await AsyncStorage.setItem("riderId", riderId);
+  if (sosActivoValue === "true") {
+    // Requerir confirmación explícita del usuario antes de cualquier envío
+    const sosConfirmado = await AsyncStorage.getItem('sosConfirmado');
+    if (sosConfirmado !== 'true') {
+      await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
+      await AsyncStorage.setItem('tipoSOS', '');
+      console.log('[SOS] Bloqueado: falta confirmación explícita (sosConfirmado)');
+      return;
     }
+    // Anti-falsos positivos: exigir activación reciente y tipo válido
+    try {
+      const sosInicioStr = await AsyncStorage.getItem('sosInicio');
+      const sosInicio = sosInicioStr ? parseInt(sosInicioStr) : 0;
+      const nowTs = Date.now();
+      const ACTIVATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
+      const tipoActual = (await AsyncStorage.getItem("tipoSOS")) || "";
+      const permitido = tipoActual === 'robo' || tipoActual === 'accidente';
+      const dentroDeVentana = sosInicio && (nowTs - sosInicio) <= ACTIVATION_WINDOW_MS;
+
+      if (!permitido || !dentroDeVentana) {
+        // Resetear flags para evitar loops y no enviar nada
+        await AsyncStorage.multiRemove([
+          'sosActivo',
+          'sosEnviado',
+          'contadorActualizaciones'
+        ]);
+        await AsyncStorage.setItem('tipoSOS', '');
+        console.log('[SOS] Bloqueado por guardas: permitido=', permitido, 'dentroDeVentana=', dentroDeVentana);
+        return;
+      }
+    } catch (_) { /* si falla, continuar con más validaciones abajo */ }
+
+    const riderId = await getOrCreateRiderId();
 
     const nombre = (await AsyncStorage.getItem("nombre")) || "No especificado";
     const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
     let color = (await AsyncStorage.getItem("color")) || "No especificado";
     color = color.trim() !== "" ? color : "No especificado";
     const tipoSOS = (await AsyncStorage.getItem("tipoSOS")) || "robo";
+    if (!(tipoSOS === 'robo' || tipoSOS === 'accidente')) {
+      console.log('[SOS] Tipo inválido, cancelando envío:', tipoSOS);
+      return;
+    }
     const sosEnviado = await AsyncStorage.getItem("sosEnviado");
 
     const mensajeBackend = {
@@ -100,47 +139,33 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       nombre,
       moto,
       color,
-      ubicacion: {
-        lat: coords.lat,
-        lng: coords.lng
-      },
+      ubicacion: { lat: coords.lat, lng: coords.lng },
       fechaHora: new Date().toISOString(),
       tipo: tipoSOS,
       tipoSOSActual: tipoSOS || null,
     };
 
     try {
-      const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
-      const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
-      if (invisible && !sosActivoFlag) {
-        console.log('Modo Invisible activo: no se envía ubicación (sin SOS).');
-        return;
-      }
-
       const authToken = await AsyncStorage.getItem('authToken');
       await axios.post(BACKEND_URL, mensajeBackend, {
         headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-        timeout: 15000, // Aumentado a 15 segundos
+        timeout: 15000,
       });
 
       if (sosEnviado !== "true") {
         await AsyncStorage.setItem("sosEnviado", "true");
-        console.log(`Alerta inicial (${tipoSOS}) enviada:`, mensajeBackend.fechaHora);
         await enviarNotificacion(
-          `SOS ${tipoSOS.toUpperCase()}`, 
+          `SOS ${tipoSOS.toUpperCase()}`,
           `Alerta enviada. Ubicación: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
           `sos-${tipoSOS}-${riderId}`
         );
       } else {
-        console.log(`Actualización de ubicación enviada (${tipoSOS}):`, mensajeBackend.fechaHora);
-        // Enviar notificación de actualización cada 5 actualizaciones para no saturar
         const contadorActualizaciones = await AsyncStorage.getItem("contadorActualizaciones") || "0";
         const contador = parseInt(contadorActualizaciones) + 1;
         await AsyncStorage.setItem("contadorActualizaciones", contador.toString());
-        
         if (contador % 5 === 0) {
           await enviarNotificacion(
-            `📍 Actualización ${tipoSOS.toUpperCase()}`, 
+            `📍 Actualización ${tipoSOS.toUpperCase()}`,
             `Ubicación actualizada. ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
             `update-${tipoSOS}-${riderId}-${contador}`
           );
@@ -148,15 +173,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       }
     } catch (err) {
       console.error("Error enviando ubicación al backend:", err.message);
-      // Solo enviar notificación de error si es un SOS inicial
       if (sosEnviado !== "true") {
         await enviarNotificacion(
-          "Error de conexión", 
+          "Error de conexión",
           "No se pudo enviar la ubicación. Verifica tu conexión a internet.",
           "connection-error"
         );
       }
-      // Guardar para reintento posterior
       await AsyncStorage.setItem("pendienteEnvio", JSON.stringify(mensajeBackend));
     }
     return;
@@ -164,15 +187,14 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
   // Si NO hay SOS activo: enviar lat/lng como estado "normal" (keep-alive) cada 60s
   try {
+    const repartiendo = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
+    if (!repartiendo) return;
+
     const lastNormalTs = await AsyncStorage.getItem('lastNormalSentTs');
     const now = Date.now();
     const intervalMs = 60000; // 60s
     if (!lastNormalTs || now - parseInt(lastNormalTs) >= intervalMs) {
-      let riderId = await AsyncStorage.getItem("riderId");
-      if (!riderId) {
-        riderId = generarRiderId();
-        await AsyncStorage.setItem("riderId", riderId);
-      }
+      const riderId = await getOrCreateRiderId();
       const nombre = (await AsyncStorage.getItem("nombre")) || "No especificado";
       const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
       let color = (await AsyncStorage.getItem("color")) || "No especificado";
@@ -180,13 +202,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
       const sosEnviadoFlag = await AsyncStorage.getItem("sosEnviado");
       if (sosEnviadoFlag !== 'true') {
-        const invisible = (await AsyncStorage.getItem('invisibleMode')) === 'true';
-        const sosActivoFlag = (await AsyncStorage.getItem('sosActivo')) === 'true';
-        if (invisible && !sosActivoFlag) {
-          console.log('Modo Invisible activo: no se envía ubicación (sin SOS).');
-          return;
-        }
-
         const authToken = await AsyncStorage.getItem('authToken');
         await axios.post(BACKEND_URL, {
           riderId,
@@ -201,9 +216,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
           timeout: 15000,
         });
         await AsyncStorage.setItem('lastNormalSentTs', now.toString());
-        console.log('Estado normal enviado (keep-alive).');
-      } else {
-        console.log('Omitiendo envío tipo normal desde tasks: hay SOS activo.');
       }
     }
   } catch (e) {
@@ -213,28 +225,22 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 export const iniciarUbicacionBackground = async () => {
   try {
-    // Solicitar permisos de notificaciones
     const { status: notificationStatus } = await Notifications.requestPermissionsAsync();
     if (notificationStatus !== 'granted') {
       console.log("Permiso de notificaciones denegado");
     }
 
-    // Solicitar permisos de ubicación
     const { status } = await Location.requestForegroundPermissionsAsync();
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
 
     if (status === "granted" && bgStatus === "granted") {
-      // Verificar si ya hay una tarea ejecutándose
-      const isTaskDefined = TaskManager.isTaskDefined(LOCATION_TASK_NAME);
       const isTaskRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-
       if (!isTaskRegistered) {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.High, // Más fiable para callbacks periódicos
-          // Asegurar actualizaciones periódicas incluso sin movimiento (Android)
-          timeInterval: 60000, // cada 1 minuto para mejor frescura en el mapa
-          distanceInterval: 0, // enviar aunque no haya movimiento
-          deferredUpdatesInterval: 60000, // cada 1 min
+          accuracy: Location.Accuracy.High,
+          timeInterval: 60000,
+          distanceInterval: 0,
+          deferredUpdatesInterval: 60000,
           deferredUpdatesDistance: 0,
           activityType: Location.ActivityType.Other,
           showsBackgroundLocationIndicator: true,
@@ -243,25 +249,13 @@ export const iniciarUbicacionBackground = async () => {
             notificationBody: "Compartiendo ubicación en tiempo real",
             notificationColor: "#e74c3c",
           },
-          // Configuraciones adicionales para Android
           mayShowUserSettingsDialog: true,
           pausesLocationUpdatesAutomatically: false,
         });
-        console.log("Ubicación en segundo plano iniciada correctamente");
-        
-        // Enviar notificación de confirmación
-        await enviarNotificacion(
-          "SOS Configurado", 
-          "La aplicación está lista para enviar alertas en segundo plano",
-          "sos-configured"
-        );
-      } else {
-        console.log("Ubicación en segundo plano ya está activa");
       }
     } else {
-      console.log("Permisos de ubicación denegados");
       await enviarNotificacion(
-        "Permisos Requeridos", 
+        "Permisos Requeridos",
         "La aplicación necesita permisos de ubicación para funcionar correctamente",
         "permissions-required"
       );
@@ -269,37 +263,33 @@ export const iniciarUbicacionBackground = async () => {
   } catch (error) {
     console.error("Error iniciando ubicación en segundo plano:", error);
     await enviarNotificacion(
-      "Error de Configuración", 
+      "Error de Configuración",
       "No se pudo configurar el tracking de ubicación",
       "config-error"
     );
   }
 };
 
-// Función para detener el tracking de ubicación
 export const detenerUbicacionBackground = async () => {
   try {
     const isTaskRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (isTaskRegistered) {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-      console.log("Ubicación en segundo plano detenida");
     }
   } catch (error) {
     console.error("Error deteniendo ubicación en segundo plano:", error);
   }
 };
 
-// Función para verificar el estado del tracking
 export const verificarEstadoTracking = async () => {
   try {
     const isTaskRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     const ultimaUbicacion = await AsyncStorage.getItem("ultimaUbicacion");
     const timestamp = await AsyncStorage.getItem("ultimaUbicacionTimestamp");
-    
     return {
       trackingActivo: isTaskRegistered,
       ultimaUbicacion: ultimaUbicacion ? JSON.parse(ultimaUbicacion) : null,
-      ultimaActualizacion: timestamp ? new Date(parseInt(timestamp)) : null
+      ultimaActualizacion: timestamp ? new Date(parseInt(timestamp)) : null,
     };
   } catch (error) {
     console.error("Error verificando estado del tracking:", error);

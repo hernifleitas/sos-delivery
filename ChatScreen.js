@@ -1,6 +1,6 @@
 // ChatScreen.js
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Modal, StyleSheet, FlatList, TextInput, TouchableOpacity, useColorScheme, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Modal, StyleSheet, FlatList, TextInput, TouchableOpacity, useColorScheme, Alert, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import ChatService from './services/ChatService';
 
 export default function ChatScreen({ visible, onClose, isPremium = false, isAdmin = false, currentUserId, onUpgrade }) {
@@ -10,6 +10,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const listRef = useRef(null);
+  const [kbVisible, setKbVisible] = useState(false);
 
   // Utilidad: fusionar mensajes por id, evitando duplicados y manteniendo orden DESC por created_at
   const mergeUniqueById = (base = [], incoming = []) => {
@@ -63,6 +64,13 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       ChatService.off('message:deleted', handleDeleted);
     };
   }, [visible]);
+
+  // Listeners de teclado (Android: para evitar espacios residuales con adjustPan)
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
+    return () => { try { showSub.remove(); hideSub.remove(); } catch (_) {} };
+  }, []);
 
   const handleIncoming = (msg) => {
     if (!msg) return;
@@ -252,8 +260,8 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
       >
         <View style={styles.header}>
           <Text style={styles.title}> ChatRiders</Text>
@@ -265,7 +273,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         <FlatList
           ref={listRef}
           style={styles.list}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 0 : 100 }}
           data={messages}
           inverted={true}
           keyExtractor={(item) => String(item?.id ?? `${item?.user_id || 'u'}-${item?.created_at || Math.random()}`)}
@@ -307,10 +315,6 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
             <Text style={styles.sendText}>Enviar</Text>
           </TouchableOpacity>
         </View>
-
-        {Platform.OS === 'android' && (
-          <View style={{ height: 34 }} />
-        )}
 
         {!isPremium && (
           <View style={styles.premiumOverlay}>
