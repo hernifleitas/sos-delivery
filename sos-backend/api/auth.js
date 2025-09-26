@@ -201,9 +201,9 @@
 
   // Rutas de administración
   // Obtener todos los usuarios
-  router.get('/admin/all-users', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
+  router.get('/admin/all-users', database.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
     try {
-      const users = await authService.getAllUsers();
+      const users = await database.getAllUsers();
       res.json({
         success: true,
         users: users.map(user => ({
