@@ -201,31 +201,37 @@
 
   // Rutas de administración
   // Obtener todos los usuarios
-  router.get('/admin/all-users', database.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
-    try {
-      const users = await database.getAllUsers();
-      res.json({
-        success: true,
-        users: users.map(user => ({
-          id: user.id,
-          nombre: user.nombre,
-          email: user.email,
-          moto: user.moto,
-          color: user.color,
-          status: user.status,
-          role: user.role || 'user',
-          premium_expires_at: user.premium_expires_at,
-          created_at: user.created_at
-        }))
-      });
-    } catch (error) {
-      console.error('Error obteniendo todos los usuarios:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
+  router.get(
+    '/admin/all-users',
+    authService.authenticateToken.bind(authService),
+    authService.requireAdmin.bind(authService),
+    async (req, res) => {
+      try {
+        const users = await database.getAllUsers(); // database solo para leer datos
+        res.json({
+          success: true,
+          users: users.map(user => ({
+            id: user.id,
+            nombre: user.nombre,
+            email: user.email,
+            moto: user.moto,
+            color: user.color,
+            status: user.status,
+            role: user.role || 'user',
+            premium_expires_at: user.premium_expires_at,
+            created_at: user.created_at
+          }))
+        });
+      } catch (error) {
+        console.error('Error obteniendo todos los usuarios:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Error interno del servidor'
+        });
+      }
     }
-  });
+  );
+  
 
   // Obtener usuarios pendientes
   router.get('/admin/pending-users', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
