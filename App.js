@@ -174,8 +174,9 @@ export default function App() {
   const [showMainMenu, setShowMainMenu] = useState(false);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [isPremium, setIsPremium] = useState(true); // TODO: actualizar desde backend/billing
+  const [isPremium, setIsPremium] = useState(false); // Se actualiza desde backend (role: 'premium' o 'admin')
   const [isRepartiendo, setIsRepartiendo] = useState(false); // Modo Repartiendo deshabilitado en esquema 'Activo' clásico
+  const [showMapMarkers, setShowMapMarkers] = useState(true);
   const [booted, setBooted] = useState(false); // evita "salto" splash→main al rehidratar
 
   // Estados de la aplicación
@@ -206,6 +207,8 @@ export default function App() {
       if (userLoggedIn === "true" && userData) {
         const userInfo = JSON.parse(userData);
         setUser(userInfo);
+        const premiumFlag = (userInfo?.role === 'premium' || userInfo?.role === 'admin');
+        setIsPremium(premiumFlag);
         setIsLoggedIn(true);
         setCurrentScreen('main');
 
@@ -218,6 +221,12 @@ export default function App() {
               });
               if (!response.data.success) {
                 await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
+              } else if (response.data?.user) {
+                const merged = { ...(userInfo || {}), ...(response.data.user || {}) };
+                setUser(merged);
+                const premiumNow = (merged?.role === 'premium' || merged?.role === 'admin');
+                setIsPremium(premiumNow);
+                try { await AsyncStorage.setItem('usuario', JSON.stringify(merged)); } catch {}
               }
             } catch (error) {
               // Solo cerrar si el token es inválido explícitamente
@@ -238,13 +247,28 @@ export default function App() {
         const sos = await AsyncStorage.getItem("sosActivo");
         const tipo = await AsyncStorage.getItem("tipoSOS");
         if (sos === "true") {
-          setSosActivo(true);
-          setTipoSOS(tipo || "robo");
-          setContador(0);
-          // Enviar inmediatamente y programar intervalo sin esperar 10s
-          await enviarUbicacionSOS();
-          if (!intervaloSOS.current) {
-            intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
+          // Guardas anti-activación automática
+          const confirmado = await AsyncStorage.getItem('sosConfirmado');
+          const inicioStr = await AsyncStorage.getItem('sosInicio');
+          const inicio = inicioStr ? parseInt(inicioStr) : 0;
+          const ahora = Date.now();
+          const dentroDeVentana = inicio && (ahora - inicio) <= (5 * 60 * 1000);
+          const tipoValido = tipo === 'robo' || tipo === 'accidente';
+          if (confirmado === 'true' && dentroDeVentana && tipoValido) {
+            setSosActivo(true);
+            setTipoSOS(tipo || 'robo');
+            setContador(0);
+            // Enviar inmediatamente y programar intervalo sin esperar 10s
+            await enviarUbicacionSOS();
+            if (!intervaloSOS.current) {
+              intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
+            }
+          } else {
+            // Limpiar flags inconsistentes
+            await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
+            await AsyncStorage.removeItem('sosInicio');
+            await AsyncStorage.removeItem('tipoSOS');
+            await AsyncStorage.removeItem('sosConfirmado');
           }
         }
 
@@ -306,11 +330,11 @@ export default function App() {
             setCurrentScreen('reset');
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     const sub = Linking.addEventListener('url', handleUrl);
     Linking.getInitialURL().then((initial) => { if (initial) handleUrl(initial); });
-    return () => { try { sub.remove(); } catch (_) {} };
+    return () => { try { sub.remove(); } catch (_) { } };
   }, []);
 
   // Función para activar SOS desde segundo plano
@@ -402,6 +426,7 @@ export default function App() {
 
   const handleLoginSuccess = async (userData) => {
     setUser(userData);
+    setIsPremium(userData?.role === 'premium' || userData?.role === 'admin');
     setIsLoggedIn(true);
     setCurrentScreen('main');
 
@@ -417,6 +442,7 @@ export default function App() {
     if (userData?.nombre) await AsyncStorage.setItem('nombre', userData.nombre);
     if (userData?.moto) await AsyncStorage.setItem('moto', userData.moto);
     if (userData?.color) await AsyncStorage.setItem('color', userData.color);
+    if (userData?.id) await AsyncStorage.setItem('userId', String(userData.id));
 
     // Verificar si es administrador
     await checkAdminStatus();
@@ -432,6 +458,7 @@ export default function App() {
 
   const handleRegisterSuccess = async (userData) => {
     setUser(userData);
+    setIsPremium(userData?.role === 'premium' || userData?.role === 'admin');
     setIsLoggedIn(true);
     setCurrentScreen('main');
 
@@ -445,6 +472,7 @@ export default function App() {
     if (userData?.nombre) await AsyncStorage.setItem('nombre', userData.nombre);
     if (userData?.moto) await AsyncStorage.setItem('moto', userData.moto);
     if (userData?.color) await AsyncStorage.setItem('color', userData.color);
+    if (userData?.id) await AsyncStorage.setItem('userId', String(userData.id));
 
     // Registrar token de notificaciones push inmediatamente tras registro
     try {
@@ -457,6 +485,9 @@ export default function App() {
 
   const handleUpdateUser = (updatedUser) => {
     setUser(updatedUser);
+    if (updatedUser && 'role' in updatedUser) {
+      setIsPremium(updatedUser.role === 'premium' || updatedUser.role === 'admin');
+    }
     // Sincronizar cambios con AsyncStorage para que tareas usen datos reales
     if (updatedUser?.nombre) AsyncStorage.setItem('nombre', updatedUser.nombre);
     if (updatedUser?.moto) AsyncStorage.setItem('moto', updatedUser.moto);
@@ -547,6 +578,7 @@ export default function App() {
     await AsyncStorage.setItem("sosActivo", "true");
     await AsyncStorage.setItem("sosInicio", Date.now().toString());
     await AsyncStorage.setItem("sosEnviado", "false");
+    await AsyncStorage.setItem("sosConfirmado", "true");
     await AsyncStorage.setItem("nombre", user?.nombre || "Usuario");
     await AsyncStorage.setItem("moto", user?.moto || "No especificado");
     await AsyncStorage.setItem("color", user?.color || "No especificado");
@@ -564,7 +596,7 @@ export default function App() {
       intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
     }
     // Asegurar tracking en background durante SOS
-    try { await iniciarUbicacionBackground(); } catch {}
+    try { await iniciarUbicacionBackground(); } catch { }
   };
 
   const cancelarSOS = async () => {
@@ -612,6 +644,19 @@ export default function App() {
     }
   };
 
+  const handleToggleMapMarkers = async () => {
+    try {
+      const next = !showMapMarkers;
+      setShowMapMarkers(next);
+
+      // Iniciar tracking si se activan marcadores (opcional, si lo querés mantener)
+      if (next) {
+        try { await iniciarUbicacionBackground(); } catch (e) { }
+      }
+    } catch (e) {
+      console.warn('No se pudo alternar el modo de marcadores del mapa:', e?.message);
+    }
+  };
   const toggleTracking = async () => {
     if (trackingActivo) {
       await detenerUbicacionBackground();
@@ -627,9 +672,31 @@ export default function App() {
     }
   };
 
-  // Modo Repartiendo deshabilitado: función sin efectos
-  const toggleRepartiendo = async () => { setIsRepartiendo(false); };
+  const toggleRepartiendo = async () => {
+    try {
+      if (!isPremium) {
+        setShowPremiumPaywall(true);
+        Alert.alert('Función Premium', 'El modo Repartiendo está disponible con Premium.');
+        return;
+      }
+      const next = !isRepartiendo;
+      setIsRepartiendo(next);
+      await AsyncStorage.setItem('repartiendoActivo', next ? 'true' : 'false');
 
+      if (next) {
+        // Al activar, asegurar tracking en background para tener ubicación fresca
+        await iniciarUbicacionBackground();
+        // Opcional: enviar un primer “normal” inmediato
+        // (lo normal es dejar que lo mande el task al minuto; si querés inmediato, puedo agregarlo)
+      } else {
+        // Al desactivar, dejar de enviar “normal”
+        // Podés detener el tracking para ahorrar batería, o dejarlo si querés retención de última ubicación
+        // await detenerUbicacionBackground();
+      }
+    } catch (e) {
+      console.warn('No se pudo alternar Repartiendo:', e?.message);
+    }
+  };
   // El estado 'normal' deja de enviarse automáticamente.
 
   // Rehidratación inicial: restaurar sesión y pantalla antes de renderizar
@@ -663,7 +730,7 @@ export default function App() {
 
   // Persistir pantalla actual para restaurar al volver del background / recreación
   useEffect(() => {
-    AsyncStorage.setItem('lastScreen', currentScreen).catch(() => {});
+    AsyncStorage.setItem('lastScreen', currentScreen).catch(() => { });
   }, [currentScreen]);
 
   // Estilos dinámicos basados en el modo oscuro
@@ -728,9 +795,15 @@ export default function App() {
         trackingActivo={trackingActivo}
         onQuickNotifications={enviarNotificacionConAcciones}
         onToggleTracking={toggleTracking}
-        onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }} 
-        onOpenChat={() => { setShowMainMenu(false); setShowChat(true); }}
-        // Modo Repartiendo deshabilitado
+        onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }}
+        onOpenChat={() => {
+          setShowMainMenu(false);
+          if (!isPremium) { setShowPremiumPaywall(true); } else { setShowChat(true); }
+        }}
+        isRepartiendo={isRepartiendo}
+        onToggleRepartiendo={toggleRepartiendo}
+        showMapMarkers={showMapMarkers}
+        onToggleMapMarkers={() => setShowMapMarkers(prev => !prev)}
       />
 
       {/* Paywall Premium */}
@@ -843,7 +916,7 @@ export default function App() {
 
       {/* Mapa en pantalla completa */}
       <View style={styles.mapContainer}>
-        <MapRidersRealtime />
+        <MapRidersRealtime showMarkers={showMapMarkers} />
       </View>
 
       {/* Panel deslizable de alertas */}

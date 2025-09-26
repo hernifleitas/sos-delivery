@@ -25,10 +25,15 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
   
   const [showProfile, setShowProfile] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   
   // Estados para cambiar contraseña
   const [email, setEmail] = useState("");
+  // Estados de edición de perfil
+  const [editNombre, setEditNombre] = useState(user?.nombre || "");
+  const [editMoto, setEditMoto] = useState(user?.moto || "");
+  const [editColor, setEditColor] = useState(user?.color || "");
 
   const dynamicStyles = StyleSheet.create({
     navbar: {
@@ -94,17 +99,9 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
       fontWeight: "bold",
       color: isDarkMode ? "#ffffff" : "#2c3e50",
     },
-    closeButton: {
-      padding: 5,
-    },
-    closeButtonText: {
-      fontSize: 24,
-      color: "#e74c3c",
-      fontWeight: "bold",
-    },
-    profileInfo: {
-      marginBottom: 20,
-    },
+    closeButton: { padding: 5 },
+    closeButtonText: { fontSize: 24, color: "#e74c3c", fontWeight: "bold" },
+    profileInfo: { marginBottom: 20 },
     infoRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -140,18 +137,9 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
       borderWidth: 1,
       borderColor: "#e74c3c",
     },
-    actionButtonText: {
-      color: "#ffffff",
-      fontSize: 16,
-      fontWeight: "bold",
-      textAlign: "center",
-    },
-    actionButtonTextSecondary: {
-      color: "#e74c3c",
-    },
-    inputContainer: {
-      marginBottom: 20,
-    },
+    actionButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "bold", textAlign: "center" },
+    actionButtonTextSecondary: { color: "#e74c3c" },
+    inputContainer: { marginBottom: 20 },
     inputLabel: {
       fontSize: 16,
       fontWeight: "600",
@@ -167,9 +155,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
       borderRadius: 12,
       fontSize: 16,
     },
-    inputFocused: {
-      borderColor: "#e74c3c",
-    },
+    inputFocused: { borderColor: "#e74c3c" },
     logoutButton: {
       backgroundColor: "#e74c3c",
       paddingVertical: 15,
@@ -182,12 +168,7 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
       shadowRadius: 4,
       elevation: 4,
     },
-    logoutButtonText: {
-      color: "#ffffff",
-      fontSize: 16,
-      fontWeight: "bold",
-      textAlign: "center",
-    },
+    logoutButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "bold", textAlign: "center" },
   });
 
   const handleLogout = async () => {
@@ -285,6 +266,41 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
     return emailRegex.test(email);
   };
 
+  const handleOpenEditProfile = () => {
+    setEditNombre(user?.nombre || "");
+    setEditMoto(user?.moto || "");
+    setEditColor(user?.color || "");
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('authToken');
+      const payload = { nombre: editNombre?.trim(), moto: editMoto?.trim(), color: editColor?.trim() };
+      const resp = await axios.put(`${BACKEND_URL}/auth/profile`, payload, {
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        timeout: 12000,
+      });
+      if (resp.data?.success) {
+        const updatedUser = { ...(user || {}), ...payload };
+        onUpdateUser?.(updatedUser);
+        await AsyncStorage.setItem('usuario', JSON.stringify(updatedUser));
+        if (payload.nombre) await AsyncStorage.setItem('nombre', payload.nombre);
+        if (payload.moto) await AsyncStorage.setItem('moto', payload.moto);
+        if (payload.color) await AsyncStorage.setItem('color', payload.color);
+        setShowEditProfile(false);
+        Alert.alert('Perfil actualizado', 'Tus datos fueron guardados correctamente.');
+      } else {
+        Alert.alert('Error', resp.data?.message || 'No se pudo actualizar el perfil');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo actualizar el perfil. Verificá tu conexión.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       {/* Modal de perfil */}
@@ -345,12 +361,88 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
               </TouchableOpacity>
 
               <TouchableOpacity
+                style={[dynamicStyles.actionButton, dynamicStyles.actionButtonSecondary]}
+                onPress={handleOpenEditProfile}
+              >
+                <Text style={[dynamicStyles.actionButtonText, dynamicStyles.actionButtonTextSecondary]}>✏️ Editar Perfil</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={dynamicStyles.logoutButton}
                 onPress={handleLogout}
               >
                 <Text style={dynamicStyles.logoutButtonText}>
                   🚪 Cerrar Sesión
                 </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Editar Perfil */}
+      <Modal
+        visible={showEditProfile}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEditProfile(false)}
+      >
+        <View style={dynamicStyles.modalOverlay}>
+          <View style={dynamicStyles.modalContent}>
+            <View style={dynamicStyles.modalHeader}>
+              <Text style={dynamicStyles.modalTitle}>✏️ Editar Perfil</Text>
+              <TouchableOpacity style={dynamicStyles.closeButton} onPress={() => setShowEditProfile(false)}>
+                <Text style={dynamicStyles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={dynamicStyles.inputContainer}>
+                <Text style={dynamicStyles.inputLabel}>Nombre</Text>
+                <TextInput
+                  style={[dynamicStyles.input, editNombre ? dynamicStyles.inputFocused : null]}
+                  placeholder="Tu nombre"
+                  placeholderTextColor={isDarkMode ? '#666666' : '#999999'}
+                  value={editNombre}
+                  onChangeText={setEditNombre}
+                />
+              </View>
+
+              <View style={dynamicStyles.inputContainer}>
+                <Text style={dynamicStyles.inputLabel}>Moto</Text>
+                <TextInput
+                  style={[dynamicStyles.input, editMoto ? dynamicStyles.inputFocused : null]}
+                  placeholder="Tu moto"
+                  placeholderTextColor={isDarkMode ? '#666666' : '#999999'}
+                  value={editMoto}
+                  onChangeText={setEditMoto}
+                />
+              </View>
+
+              <View style={dynamicStyles.inputContainer}>
+                <Text style={dynamicStyles.inputLabel}>Color</Text>
+                <TextInput
+                  style={[dynamicStyles.input, editColor ? dynamicStyles.inputFocused : null]}
+                  placeholder="Color de la moto"
+                  placeholderTextColor={isDarkMode ? '#666666' : '#999999'}
+                  value={editColor}
+                  onChangeText={setEditColor}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[dynamicStyles.actionButton, loading ? { backgroundColor: '#95a5a6' } : null]}
+                onPress={handleSaveProfile}
+                disabled={loading}
+              >
+                <Text style={dynamicStyles.actionButtonText}>{loading ? 'Guardando...' : '💾 Guardar Cambios'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[dynamicStyles.actionButton, dynamicStyles.actionButtonSecondary]}
+                onPress={() => setShowEditProfile(false)}
+              >
+                <Text style={[dynamicStyles.actionButtonText, dynamicStyles.actionButtonTextSecondary]}>Cancelar</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

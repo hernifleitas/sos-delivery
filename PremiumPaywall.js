@@ -32,10 +32,10 @@ export default function PremiumPaywall({ visible, onClose, onSubscribe }) {
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.title}>Versión Premium</Text>
-          <Text style={styles.subtitle}>Accedé al chat de riders y a futuras funciones exclusivas.</Text>
+          <Text style={styles.subtitle}>•Colaborá con la aplicación pagando la versión premium </Text>
           <Text style={styles.feature}>• ChatRiders en tiempo real</Text>
-          <Text style={styles.feature}>• Próximamente: canales por zona y mensajes privados</Text>
-          <Text style={styles.feature}>• Soporte prioritario</Text>
+          <Text style={styles.feature}>• Próximamente: Acceso a alerta "Pinchazo" </Text>
+          <Text style={styles.feature}>• Acceso a botón "Repartiendo" para mostrar siempre tu ubicación en el mapa</Text>
 
           <View style={styles.buttons}>
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={onClose}>

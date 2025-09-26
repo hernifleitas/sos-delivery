@@ -87,10 +87,12 @@ export const manejarRespuestaNotificacion = async (response) => {
       switch (actionIdentifier) {
         case 'SOS_ROBO':
           console.log('Activando SOS Robo desde notificación');
+          await AsyncStorage.setItem('sosConfirmado', 'true');
           await activarSOSDesdeNotificacion('robo');
           break;
         case 'SOS_ACCIDENTE':
           console.log('Activando SOS ACCIDENTE desde notificación');
+          await AsyncStorage.setItem('sosConfirmado', 'true');
           await activarSOSDesdeNotificacion('accidente');
           break;
         case 'CANCELAR_SOS':
@@ -98,6 +100,7 @@ export const manejarRespuestaNotificacion = async (response) => {
           // Cancelar cualquier SOS activo
           await AsyncStorage.setItem('sosActivo', 'false');
           await AsyncStorage.setItem('sosEnviado', 'false');
+          await AsyncStorage.removeItem('sosConfirmado');
           // Enviar estado normal al backend para limpiar alerta
           try {
             const riderId = await AsyncStorage.getItem('riderId');
@@ -133,6 +136,7 @@ export const manejarRespuestaNotificacion = async (response) => {
         case 'CANCELAR_SOS_ACTIVO':
           console.log('Cancelando SOS activo desde notificación');
           await cancelarSOSDesdeNotificacion();
+          await AsyncStorage.removeItem('sosConfirmado');
           // Además, enviar normal al backend
           try {
             const riderId = await AsyncStorage.getItem('riderId');
@@ -215,12 +219,11 @@ export const programarNotificacionesPeriodicas = async () => {
         categoryIdentifier: 'SOS_CATEGORY',
       },
       trigger: {
-        seconds: 900, // 15 minutos (aumentado de 5 a 15)
+        seconds: 900,
         repeats: true,
       },
     });
     
-    // Marcar como programadas
     await AsyncStorage.setItem('notificacionesPeriodicasProgramadas', 'true');
     console.log('Notificaciones periódicas programadas cada 15 minutos');
   } catch (error) {
