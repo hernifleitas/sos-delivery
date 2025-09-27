@@ -800,21 +800,8 @@ router.get('/admin/all-users',
   authService.requireAdmin.bind(authService),
   async (req, res) => {
     try {
-      const users = await database.getAllUsers(); // database solo para leer datos
-      res.json({
-        success: true,
-        users: users.map(user => ({
-          id: user.id,
-          nombre: user.nombre,
-          email: user.email,
-          moto: user.moto,
-          color: user.color,
-          status: user.status,
-          role: user.role || 'user',
-          premium_expires_at: user.premium_expires_at,
-          created_at: user.created_at
-        }))
-      });
+      const result = await authService.getAllUsers();
+      res.json(result);
     } catch (error) {
       console.error('Error obteniendo todos los usuarios:', error);
       res.status(500).json({
