@@ -27,10 +27,10 @@ export default function AdminPanel({ onClose }) {
     all: false
   });
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' o 'all'
+  const [activeTab, setActiveTab] = useState('all'); // 'pending' o 'all'
 
   useEffect(() => {
-    loadPendingUsers();
+    loadAllUsers();
   }, []);
 
   const loadAllUsers = async () => {
@@ -70,6 +70,7 @@ export default function AdminPanel({ onClose }) {
         );
       }
     } catch (error) {
+      console.log(`${BACKEND_URL}/api/auth/admin/all-users`);
       console.error("Error cargando usuarios:", error);
       console.error("Error response:", error.response?.data);
       console.error("Error status:", error.response?.status);
