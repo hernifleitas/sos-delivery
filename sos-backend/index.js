@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
-
+app.use('/auth', authRoutes);
 // Guardar info de riders en memoria
 let riders = {};
 // Memoria de última alerta por rider con datos y timestamp (para ventana de gracia)
