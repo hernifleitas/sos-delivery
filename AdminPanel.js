@@ -497,7 +497,7 @@ export default function AdminPanel({ onClose }) {
       <Text style={dynamicStyles.userName}>{user.nombre}</Text>
       <Text style={dynamicStyles.userEmail}>{user.email}</Text>
       <Text style={dynamicStyles.userInfo}>Moto: {user.moto || 'No especificada'}</Text>
-      <Text style={dynamicStyles.userInfo}>Estado: {user.estado || 'Activo'}</Text>
+      <Text style={dynamicStyles.userInfo}>Estado: {user.status || 'Activo'}</Text>
       {user.premiumExpires && (
         <Text style={[dynamicStyles.userInfo, {color: '#f39c12'}]}>
           Premium hasta: {formatDate(user.premiumExpires)}
