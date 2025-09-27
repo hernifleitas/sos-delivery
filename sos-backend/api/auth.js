@@ -212,7 +212,8 @@ router.get('/admin/all-users',
         users: users.map(user => ({
           nombre: user.nombre,
           moto: user.moto,
-          color: user.color
+          color: user.color,
+          status: user.status 
         }))
       });
     } catch (error) {
