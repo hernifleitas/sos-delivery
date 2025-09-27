@@ -6,7 +6,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const authRoutes = require('./api/auth');
-const authService = require('./auth');
 const chatRoutes = require('./api/chat');
 const notificationsRoutes = require('./api/notifications');
 const notifications = require('./notifications');
@@ -167,7 +166,9 @@ app.post("/sos", async (req, res) => {
         const token = authHeader && authHeader.split(' ')[1];
         let emitterUserId = null;
         if (token) {
-          const decoded = authService.verifyToken(token);
+          const jwt = require('jsonwebtoken');
+          const jwtSecret = process.env.JWT_SECRET || 'rider-sos-secret-key-2024';
+          const decoded = jwt.verify(token, jwtSecret);
           if (decoded?.id) emitterUserId = decoded.id;
         }
 
@@ -312,7 +313,32 @@ app.use(`${API_PREFIX}/chat`, chatRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 
 // Middleware para verificar autenticación en rutas protegidas
-app.use(`${API_PREFIX}/protected`, authService.authenticateToken.bind(authService));
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Token de acceso requerido'
+    });
+  }
+
+  try {
+    const jwt = require('jsonwebtoken');
+    const jwtSecret = process.env.JWT_SECRET || 'rider-sos-secret-key-2024';
+    const decoded = jwt.verify(token, jwtSecret);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({
+      success: false,
+      message: 'Token inválido o expirado'
+    });
+  }
+};
+
+app.use(`${API_PREFIX}/protected`, authenticateToken);
 
 const PORT = process.env.PORT || 10000;
 const HOST = process.env.HOST || '0.0.0.0'; 
