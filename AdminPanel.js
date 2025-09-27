@@ -39,9 +39,9 @@ export default function AdminPanel({ onClose }) {
       const token = await AsyncStorage.getItem('authToken');
       console.log('Token obtenido (all-users):', token ? 'Sí' : 'No');
       
-      console.log('Solicitando a la URL:', `${BACKEND_URL}/auth/admin/all-users`);
-      
-      const response = await axios.get(`${BACKEND_URL}/auth/admin/all-users`, {
+      console.log('Solicitando a la URL:', `${BACKEND_URL}/api/auth/admin/all-users`);
+    
+      const response = await axios.get(`${BACKEND_URL}/api/auth/admin/all-users`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
