@@ -363,7 +363,6 @@ class AuthService {
       };
     }
   }
-
   // Reset de contraseña con token
   async resetPasswordWithToken(token, newPassword) {
     try {
@@ -443,6 +442,22 @@ class AuthService {
       };
     } catch (error) {
       console.error('Error obteniendo usuarios pendientes:', error);
+      return {
+        success: false,
+        message: 'Error interno del servidor'
+      };
+    }
+  }
+
+  async getAllUsers() {
+    try {
+      const users = await database.getAllUsers();
+      return {
+        success: true,
+        users
+      };
+    } catch (error) {
+      console.error('Error obteniendo todos los usuarios:', error);
       return {
         success: false,
         message: 'Error interno del servidor'

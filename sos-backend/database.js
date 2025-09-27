@@ -173,7 +173,11 @@ class Database {
 
   getAllUsers() {
     return (async () => {
-      const { rows } = await this.pool.query('SELECT id, nombre, email, moto, color, created_at FROM users WHERE is_active = TRUE');
+      const { rows } = await this.pool.query(`
+        SELECT id, nombre, email, moto, color, created_at, status, role, premium_expires_at
+        FROM users
+        WHERE is_active = TRUE
+      `);
       return rows;
     })();
   }
