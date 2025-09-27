@@ -15,7 +15,8 @@ const app = express();
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
-app.use('/auth', authRoutes);
+
+
 // Guardar info de riders en memoria
 let riders = {};
 // Memoria de última alerta por rider con datos y timestamp (para ventana de gracia)
@@ -311,6 +312,11 @@ app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/chat`, chatRoutes);
 // Rutas de notificaciones
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+//debug
+console.log('Rutas auth:', authRoutes.stack
+  .filter(r => r.route)
+  .map(r => r.route.path));
+
 
 // Middleware para verificar autenticación en rutas protegidas
 const authenticateToken = (req, res, next) => {
