@@ -199,7 +199,6 @@
     }
   });
 
-  // Rutas de administración
   // Obtener todos los usuarios
   router.get(
     '/admin/all-users',
