@@ -91,7 +91,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
 
   const send = async () => {
     const content = message.trim();
-    if (!isPremium) {
+    if (!isPremium && !isAdmin) {
       onUpgrade?.();
       return;
     }
@@ -303,25 +303,25 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={isPremium ? 'Escribe un mensaje...' : 'Disponible con Premium'}
+            placeholder={isPremium|| isAdmin ? 'Escribe un mensaje...' : 'Disponible con Premium'}
             placeholderTextColor={isDarkMode ? '#777' : '#999'}
             value={message}
             onChangeText={setMessage}
-            editable={isPremium}
+            editable={isPremium || isAdmin}
             onSubmitEditing={send}
             returnKeyType="send"
           />
-          <TouchableOpacity style={[styles.sendBtn, !isPremium && { opacity: 0.5 }]} onPress={send} disabled={!isPremium}>
+          <TouchableOpacity style={[styles.sendBtn, (!isPremium && !isAdmin) && { opacity: 0.5 }]} onPress={send} disabled={!isPremium}>
             <Text style={styles.sendText}>Enviar</Text>
           </TouchableOpacity>
         </View>
 
-        {!isPremium && (
+        {!isPremium && !isAdmin && (
           <View style={styles.premiumOverlay}>
             <View style={styles.premiumCard}>
               <Text style={styles.premiumTitle}>Función Premium</Text>
               <Text style={styles.premiumText}>
-                Para chatear con otros riders necesitás la versión Premium. Podrás enviar y recibir mensajes en tiempo real.
+                Para chatear con otros riders necesitás la versión Premium. Podrás enviar y recibir mensajes en tiempo real.ngeText={setMessage}
               </Text>
               <TouchableOpacity style={styles.premiumBtn} onPress={onUpgrade}>
                 <Text style={styles.premiumBtnText}>Mejorar a Premium</Text>

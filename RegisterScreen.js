@@ -153,6 +153,36 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       marginBottom: 2,
 
     },
+
+    checkboxContainer: {
+      flexDirection: "row",      // importante para alinear checkbox y texto
+      alignItems: "center",      // mantiene el texto centrado con el checkbox
+      marginVertical: 10,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderWidth: 2,
+      borderColor: "#e74c3c",
+      borderRadius: 6,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+      backgroundColor: "#ffffff",  // fondo blanco
+    },
+    checkboxChecked: {
+      backgroundColor: "#e74c3c",  // cuando está marcado
+    },
+    checkboxLabel: {
+      flex: 1,                     // que el texto ocupe el resto del espacio
+      color: isDarkMode ? "#ffffff" : "#2c3e50",
+      fontSize: 14,
+    },
+    checkmark: {
+      color: "#ffffff",
+      fontWeight: "bold",
+      fontSize: 16,
+    },
   });
 
   const BASE_URL = getBackendURL();
@@ -409,26 +439,35 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
 
           <View style={dynamicStyles.checkboxContainer}>
             <TouchableOpacity
-              style={dynamicStyles.checkbox}
+              style={[
+                dynamicStyles.checkbox,
+                aceptaUbicacion && dynamicStyles.checkboxChecked
+              ]}
               onPress={() => setAceptaUbicacion(!aceptaUbicacion)}
+              activeOpacity={0.8}
             >
-              <Text style={dynamicStyles.checkboxLabel}>
-                {aceptaUbicacion ? "☑" : "☐"} Confirmo que la app va a compartir mi ubicación en tiempo real con otros riders
-              </Text>
+              {aceptaUbicacion && <Text style={dynamicStyles.checkmark}>✓</Text>}
             </TouchableOpacity>
+            <Text style={dynamicStyles.checkboxLabel}>
+              Confirmo que la app va a compartir mi ubicación en tiempo real con otros riders
+            </Text>
           </View>
 
           <View style={dynamicStyles.checkboxContainer}>
             <TouchableOpacity
-              style={dynamicStyles.checkbox}
+              style={[
+                dynamicStyles.checkbox,
+                aceptaTerminos && dynamicStyles.checkboxChecked
+              ]}
               onPress={() => setAceptaTerminos(!aceptaTerminos)}
+              activeOpacity={0.8}
             >
-              <Text style={dynamicStyles.checkboxLabel}>
-                {aceptaTerminos ? "☑" : "☐"} Acepto los términos y condiciones de la app Rider SOS delivery
-              </Text>
+              {aceptaTerminos && <Text style={dynamicStyles.checkmark}>✓</Text>}
             </TouchableOpacity>
+            <Text style={dynamicStyles.checkboxLabel}>
+              Acepto los términos y condiciones de la app Rider SOS delivery
+            </Text>
           </View>
-
           <TouchableOpacity
             style={[
               dynamicStyles.registerButton,

@@ -379,6 +379,7 @@ const filterSelfWhenNotRepartiendo = (list) => {
     try {
       if (webReady) {
         webviewRef.current?.injectJavaScript(`window.fitToAllRiders && window.fitToAllRiders(); true;`);
+        await fetchRiders();
       }
     } catch (e) { }
   };
