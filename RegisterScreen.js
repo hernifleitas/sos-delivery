@@ -1,12 +1,12 @@
 // RegisterScreen.js
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
   useColorScheme,
   KeyboardAvoidingView,
   Platform,
@@ -19,13 +19,16 @@ import { getBackendURL } from "./config";
 export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
-  
+
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [moto, setMoto] = useState("");
   const [color, setColor] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [aceptaUbicacion, setAceptaUbicacion] = useState(false);
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const dynamicStyles = StyleSheet.create({
@@ -148,19 +151,26 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       fontSize: 12,
       color: isDarkMode ? "#cccccc" : "#666666",
       marginBottom: 2,
+
     },
   });
 
   const BASE_URL = getBackendURL();
 
   const handleRegister = async () => {
-    if (!nombre || !email || !password || !confirmPassword || !moto || !color) {
+    if (!nombre || !email || !password || !confirmPassword || !moto || !color || !telefono || !aceptaTerminos || !aceptaUbicacion) {
       Alert.alert("Error", "Por favor completa todos los campos");
       return;
     }
 
     if (!isValidEmail(email)) {
       Alert.alert("Error", "Por favor ingresa un email válido");
+      return;
+    }
+
+    const phoneRegex = /^\+?\d{8,15}$/; // acepta + y entre 8 y 15 dígitos
+    if (!phoneRegex.test(telefono)) {
+      Alert.alert("Error", "Ingresa un número de teléfono válido");
       return;
     }
 
@@ -182,11 +192,15 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
         email: email.toLowerCase().trim(),
         password: password,
         moto: moto.trim(),
-        color: color.trim()
+        color: color.trim(),
+        telefono: telefono.trim(),
+        aceptaUbicacion: aceptaUbicacion,
+        aceptaTerminos: aceptaTerminos,
+        versionTerminos: "v1.0 - 28/09/2025"
       };
-      
+
       console.log('Enviando datos de registro:', userData);
-      
+
       const response = await axios.post(`${BASE_URL}/auth/register`, userData, {
         timeout: 15000,
         headers: { "Content-Type": "application/json" }
@@ -194,7 +208,7 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
 
       if (response.data.success) {
         Alert.alert(
-          "¡Registro Exitoso!", 
+          "¡Registro Exitoso!",
           response.data.message,
           [{ text: "Entendido", onPress: () => onNavigate('login') }]
         );
@@ -205,7 +219,7 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
       console.error("Error en registro:", error);
       console.error("Error response:", error.response?.data);
       console.error("Error status:", error.response?.status);
-      
+
       if (error.response?.status === 409) {
         Alert.alert("Error", "Este email ya está registrado");
       } else if (error.response?.status === 400) {
@@ -226,12 +240,12 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={dynamicStyles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={dynamicStyles.scrollContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={dynamicStyles.backButton}
           onPress={() => onNavigate('splash')}
         >
@@ -328,6 +342,91 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
               onChangeText={setColor}
               autoCapitalize="words"
             />
+          </View>
+
+
+          <View style={dynamicStyles.inputContainer}>
+            <Text style={dynamicStyles.label}>Teléfono</Text>
+            <TextInput
+              style={[dynamicStyles.input, telefono ? dynamicStyles.inputFocused : null]}
+              placeholder="+54 11 1234-5678"
+              placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
+              value={telefono}
+              onChangeText={setTelefono}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={dynamicStyles.inputContainer}>
+            <Text style={dynamicStyles.label}>Términos y Condiciones</Text>
+
+            <ScrollView
+              style={{
+                backgroundColor: isDarkMode ? "#2d2d2d" : "#fff3f3",
+                borderRadius: 12,
+                padding: 15,
+                borderWidth: 1,
+                borderColor: "#e74c3c",
+                marginVertical: 10,
+                height: 150,          // altura fija para que se vea como textarea
+              }}
+              nestedScrollEnabled={true} // permite scroll dentro del scroll principal
+            >
+              <Text style={{ color: isDarkMode ? "#ffffff" : "#2c3e50", lineHeight: 20 }}>
+                Al registrarte y utilizar la aplicación Rider SOS Delivery, aceptas los siguientes términos y condiciones:
+
+                {"\n\n"}1. **Uso de la Aplicación:** La app permite enviar y recibir alertas de emergencia, accidentes o robos entre usuarios registrados (repartidores). Su uso es voluntario y cada usuario es responsable de cómo utiliza la aplicación.
+
+                {"\n\n"}2. **Limitación de Responsabilidad:** Rider SOS Delivery **no garantiza la intervención física ni asistencia directa** ante un robo, accidente o emergencia. Los usuarios comprenden que la app solo facilita la comunicación de alertas y la ubicación GPS, y no sustituye la acción de las autoridades ni de servicios de emergencia oficiales.
+
+                {"\n\n"}3. **Seguridad del Usuario:** La app comparte tu ubicación en tiempo real con otros usuarios para fines de seguridad y coordinación. No nos hacemos responsables por daños, pérdidas o accidentes que ocurran mientras uses la app o mientras te desplaces.
+
+                {"\n\n"}4. **Accidentes y Robo:** Al usar la app, aceptas que **Rider SOS Delivery no tiene obligación de acudir físicamente a tu asistencia**, ni puede garantizar la protección frente a robos, agresiones o accidentes. Cualquier decisión de actuar sobre una alerta queda a criterio de los demás usuarios o autoridades.
+
+                {"\n\n"}5. **Privacidad:** Tu información personal (nombre, email, teléfono, datos de la moto) será utilizada únicamente para el funcionamiento de la app y **no será compartida con terceros** sin tu consentimiento, salvo requerimiento legal.
+
+                {"\n\n"}6. **Permisos de Ubicación:** La app requiere permisos de ubicación GPS para funcionar correctamente. La información de ubicación se almacena temporalmente y se elimina automáticamente después de 24 horas.
+
+                {"\n\n"}7. **Responsabilidad del Usuario:** Cada usuario es responsable de usar la app de manera adecuada, respetando la seguridad propia y de terceros. El uso indebido de alertas falsas, acoso o cualquier comportamiento ilegal puede derivar en la suspensión o eliminación de la cuenta.
+
+                {"\n\n"}8. **Derecho de Admisión:** Rider SOS Delivery se reserva el derecho de **aceptar o rechazar el registro de cualquier usuario** sin necesidad de justificar la decisión. Esto incluye, pero no se limita a, usuarios que puedan representar un riesgo para la seguridad de otros, que proporcionen información falsa o que incumplan estos términos y condiciones.
+
+
+                {"\n\n"}9 **Actualizaciones:** Rider SOS Delivery puede actualizar estas condiciones y funcionalidades en cualquier momento. Se recomienda revisar periódicamente los términos.
+
+                {"\n\n"}10. **Aceptación:** Al crear tu cuenta y usar la app, confirmas que has leído, entendido y aceptado estos términos y condiciones.{"\n\n"}
+
+                <Text style={{ marginTop: 10, fontSize: 14, color: isDarkMode ? "#ffffff" : "#2c3e50" }}>
+                  11. <Text style={{ fontWeight: "bold" }}>Contacto:</Text> Para consultas o solicitud de eliminación de tu cuenta, podés contactar al soporte de Rider SOS Delivery en{" "}
+                  <Text style={{ color: "#e74c3c", fontWeight: "bold" }}>soporte@ridersos.com</Text>.
+                </Text>
+                {"\n\n"}⚠️ **IMPORTANTE:** La app **no reemplaza servicios de emergencia oficiales**. Siempre llama a la policía, bomberos o servicios médicos en caso de urgencia.
+              </Text>
+            </ScrollView>
+          </View>
+
+
+          <View style={dynamicStyles.checkboxContainer}>
+            <TouchableOpacity
+              style={dynamicStyles.checkbox}
+              onPress={() => setAceptaUbicacion(!aceptaUbicacion)}
+            >
+              <Text style={dynamicStyles.checkboxLabel}>
+                {aceptaUbicacion ? "☑" : "☐"} Confirmo que la app va a compartir mi ubicación en tiempo real con otros riders
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={dynamicStyles.checkboxContainer}>
+            <TouchableOpacity
+              style={dynamicStyles.checkbox}
+              onPress={() => setAceptaTerminos(!aceptaTerminos)}
+            >
+              <Text style={dynamicStyles.checkboxLabel}>
+                {aceptaTerminos ? "☑" : "☐"} Acepto los términos y condiciones de la app Rider SOS delivery
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity

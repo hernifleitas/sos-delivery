@@ -105,57 +105,76 @@ export const enviarNotificacionSOSActivo = async (tipo) => {
 };
 
 // Función para activar SOS desde notificación
+// Función para activar SOS desde notificación con validaciones estrictas + activación completa
 export const activarSOSDesdeNotificacion = async (tipo = 'robo') => {
   try {
-    // Obtener datos del usuario
+    // 1️⃣ Confirmación explícita
+    const confirmacionUsuario = await AsyncStorage.getItem('sosConfirmadoPorUsuario');
+    if (confirmacionUsuario !== 'true') {
+      console.log('[SOS] Bloqueado: falta confirmación explícita');
+      return false;
+    }
+
+    // 2️⃣ Confirmación reciente (30 segundos)
+    const timestampConfirmacion = parseInt(await AsyncStorage.getItem('sosConfirmadoTimestamp') || '0');
+    const ahora = Date.now();
+    if (ahora - timestampConfirmacion > 30000) {
+      console.log('[SOS] Bloqueado: confirmación expirada');
+      await AsyncStorage.multiRemove(['sosConfirmadoPorUsuario', 'sosConfirmadoTimestamp']);
+      return false;
+    }
+
+    // 3️⃣ Validación de tipo SOS
+    if (tipo !== 'robo' && tipo !== 'accidente') {
+      console.log('[SOS] Bloqueado: tipo de SOS inválido', tipo);
+      return false;
+    }
+
+    // 4️⃣ Activación completa
     const nombre = await AsyncStorage.getItem('nombre') || 'Usuario';
     const moto = await AsyncStorage.getItem('moto') || 'No especificado';
     const color = await AsyncStorage.getItem('color') || 'No especificado';
-    
+
     // Generar riderId si no existe
-    let riderId = await AsyncStorage.getItem("riderId");
+    let riderId = await AsyncStorage.getItem('riderId');
     if (!riderId) {
       riderId = `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      await AsyncStorage.setItem("riderId", riderId);
+      await AsyncStorage.setItem('riderId', riderId);
     }
-    
-    // Activar SOS
+
+    // Guardar estado SOS
     await AsyncStorage.setItem('sosActivo', 'true');
     await AsyncStorage.setItem('sosInicio', Date.now().toString());
     await AsyncStorage.setItem('sosEnviado', 'false');
     await AsyncStorage.setItem('tipoSOS', tipo);
-    
-    // Asegurar tracking de ubicación en segundo plano
-    try {
-      await iniciarUbicacionBackground();
-    } catch (e) {
-      console.log('No se pudo iniciar tracking en background:', e?.message || e);
-    }
-    
-    // Guardar todos los datos del usuario para el background
-    await AsyncStorage.setItem("nombre", nombre);
-    await AsyncStorage.setItem("moto", moto);
-    await AsyncStorage.setItem("color", color);
-    
-    // Enviar notificación de confirmación
+
+    // Iniciar tracking en background
+    try { await iniciarUbicacionBackground(); } 
+    catch (e) { console.log('[SOS] Error iniciando tracking:', e?.message || e); }
+
+    // Guardar datos de usuario
+    await AsyncStorage.setItem('nombre', nombre);
+    await AsyncStorage.setItem('moto', moto);
+    await AsyncStorage.setItem('color', color);
+
+    // Notificaciones
     await enviarNotificacionEstado(
       `🚨 SOS ${tipo.toUpperCase()} ACTIVADO`,
       `Alerta de ${tipo} activada desde segundo plano. Ubicación siendo enviada cada 2 minutos.`,
       { tipo, activadoDesde: 'background' }
     );
-    
-    // Enviar notificación de SOS activo con opción de cancelar
     await enviarNotificacionSOSActivo(tipo);
-    
-    console.log(`SOS ${tipo} activado desde segundo plano - RiderID: ${riderId}`);
-    
-    // Enviar inmediatamente y comenzar intervalo sin esperas
+
+    console.log(`[SOS] ${tipo.toUpperCase()} activado - RiderID: ${riderId}`);
+
+    // Enviar ubicación inmediata + arrancar intervalos
     await enviarUbicacionInmediata(tipo);
     await iniciarIntervaloSOSBackground(tipo);
-    
+
     return true;
+
   } catch (error) {
-    console.error('Error activando SOS desde notificación:', error);
+    console.error('[SOS] Error activando SOS:', error);
     return false;
   }
 };
