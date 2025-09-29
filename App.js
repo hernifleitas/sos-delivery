@@ -822,9 +822,9 @@ export default function App() {
         onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }}
         onOpenChat={() => {
           setShowMainMenu(false);
-          if (!isPremium) { setShowPremiumPaywall(true); } else { setShowChat(true); }
+          if (!isPremium && !isAdmin) { setShowPremiumPaywall(true); } else { setShowChat(true); }
         }}
-        isRepartiendo={isRepartiendo}
+        isRepartiendo={isPremium} 
         onToggleRepartiendo={toggleRepartiendo}
         showMapMarkers={showMapMarkers}
         onToggleMapMarkers={() => setShowMapMarkers(prev => !prev)}

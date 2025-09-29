@@ -24,13 +24,40 @@ export default function AdminPanel({ onClose }) {
   const isDarkMode = colorScheme === 'dark';
 
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadPendingUsers();
+    loadAllUsers();
   }, []);
 
+
+
+  const loadAllUsers = async () => {
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      console.log('Token obtenido:', token ? 'Sí' : 'No');
+
+      const response = await axios.get(`${BACKEND_URL}/auth/admin/all-users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (response.data.success) {
+        setAllUsers(response.data.users || []);
+      } else {
+        Alert.alert("Error", response.data.message || "Error cargando usuarios");
+      }
+    } catch (error) {
+      console.error("Error cargando usuarios:", error);
+      Alert.alert("Error", "Error de conexión al cargar usuarios");
+    } finally {
+      setLoading(false);
+    }
+  }
   const loadPendingUsers = async () => {
     setLoading(true);
     try {
@@ -71,6 +98,7 @@ export default function AdminPanel({ onClose }) {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadPendingUsers();
+    await loadAllUsers();
     setRefreshing(false);
   };
 
@@ -299,6 +327,7 @@ export default function AdminPanel({ onClose }) {
   const renderPendingUserItem = (user) => (
     <View key={user.id} style={dynamicStyles.userCard}>
       <Text style={dynamicStyles.userName}>{user.nombre}</Text>
+      <Text style={dynamicStyles.userTelefono}>{user.telefono}</Text>
       <Text style={dynamicStyles.userEmail}>{user.email}</Text>
       <Text style={dynamicStyles.userInfo}>Moto: {user.moto || 'No especificada'}</Text>
       <Text style={dynamicStyles.userDate}>
