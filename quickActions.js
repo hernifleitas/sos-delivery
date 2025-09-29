@@ -22,7 +22,7 @@ export const configurarCategoriasNotificaciones = async () => {
       },
       {
         identifier: 'SOS_ACCIDENTE',
-        buttonTitle: '🛠️ SOS ACCIDENTE',
+        buttonTitle: '🚑 SOS ACCIDENTE',
         options: {
           isDestructive: false,
           isAuthenticationRequired: false,
@@ -58,117 +58,133 @@ export const configurarCategoriasNotificaciones = async () => {
 
 // Función para enviar notificación con botones de acción
 export const enviarNotificacionConAcciones = async () => {
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "🚨 Acceso Rápido SOS",
-        body: "Toca un botón para activar una alerta de emergencia",
-        data: { type: 'sos_quick_actions' },
-        sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-        categoryIdentifier: 'SOS_CATEGORY',
-      },
-      trigger: null,
-    });
-  } catch (error) {
-    console.error('Error enviando notificación con acciones:', error);
-  }
+          // Enviar notificación de acceso rápido cada 15 minutos cuando la app está en background
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "🚨 SOS Rápido Disponible",
+              body: "La app está lista para enviar alertas de emergencia",
+              data: { type: 'sos_quick_actions' },
+              sound: false, // Sin sonido para no molestar
+              priority: Notifications.AndroidNotificationPriority.LOW,
+              categoryIdentifier: 'SOS_CATEGORY',
+            },
+            trigger: {
+              seconds: 1200,
+              repeats: true,
+            },
+          });
 };
 
 // Función para manejar respuestas de notificaciones
+import { Alert } from 'react-native';
+
 export const manejarRespuestaNotificacion = async (response) => {
   try {
     const { actionIdentifier, notification } = response;
     const { data } = notification.request.content;
-    
+
     console.log('Respuesta de notificación recibida:', { actionIdentifier, data });
-    
+
     if (data?.type === 'sos_quick_actions' || data?.type === 'sos_quick_access') {
       switch (actionIdentifier) {
         case 'SOS_ROBO':
-          console.log('Activando SOS Robo desde notificación');
-          await AsyncStorage.setItem('sosConfirmado', 'true');
-          await activarSOSDesdeNotificacion('robo');
+          console.log('Tocaron SOS Robo desde notificación');
+
+          Alert.alert(
+            "Confirmar SOS Robo",
+            "¿Querés activar el SOS Robo?",
+            [
+              { text: "Cancelar", style: "cancel" },
+              {
+                text: "Confirmar",
+                onPress: async () => {
+                  await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
+                  await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
+                  await activarSOSDesdeNotificacion('robo');
+                }
+              }
+            ],
+            { cancelable: false }
+          );
           break;
+
         case 'SOS_ACCIDENTE':
-          console.log('Activando SOS ACCIDENTE desde notificación');
-          await AsyncStorage.setItem('sosConfirmado', 'true');
-          await activarSOSDesdeNotificacion('accidente');
+          console.log('Tocaron SOS Accidente desde notificación');
+
+          Alert.alert(
+            "Confirmar SOS Accidente",
+            "¿Querés activar el SOS Accidente?",
+            [
+              { text: "Cancelar", style: "cancel" },
+              {
+                text: "Confirmar",
+                onPress: async () => {
+                  await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
+                  await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
+                  await activarSOSDesdeNotificacion('accidente');
+                }
+              }
+            ],
+            { cancelable: false }
+          );
           break;
+
         case 'CANCELAR_SOS':
           console.log('Cancelando SOS desde notificación');
-          // Cancelar cualquier SOS activo
           await AsyncStorage.setItem('sosActivo', 'false');
           await AsyncStorage.setItem('sosEnviado', 'false');
           await AsyncStorage.removeItem('sosConfirmado');
-          // Enviar estado normal al backend para limpiar alerta
-          try {
-            const riderId = await AsyncStorage.getItem('riderId');
-            const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
-            const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
-            const color = (await AsyncStorage.getItem('color')) || 'No especificado';
-            const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
-            const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-            const authToken = await AsyncStorage.getItem('authToken');
-            // Cancelación explícita: SIEMPRE enviar 'normal' para limpiar alerta
-            await axios.post(`${BACKEND_URL}/sos`, {
-              riderId,
-              nombre,
-              moto,
-              color,
-              ubicacion,
-              fechaHora: new Date().toISOString(),
-              tipo: 'normal',
-              cancel: true,
-            }, {
-              timeout: 10000,
-              headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
-            });
-          } catch (e) {
-            console.log('No se pudo enviar estado normal al cancelar:', e?.message);
-          }
+          // Mantener tu lógica de enviar estado normal al backend
+          await enviarEstadoNormalBackend();
           break;
+
         default:
           console.log('Acción no reconocida:', actionIdentifier);
       }
     } else if (data?.type === 'sos_activo') {
-      switch (actionIdentifier) {
-        case 'CANCELAR_SOS_ACTIVO':
-          console.log('Cancelando SOS activo desde notificación');
-          await cancelarSOSDesdeNotificacion();
-          await AsyncStorage.removeItem('sosConfirmado');
-          // Además, enviar normal al backend
-          try {
-            const riderId = await AsyncStorage.getItem('riderId');
-            const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
-            const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
-            const color = (await AsyncStorage.getItem('color')) || 'No especificado';
-            const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
-            const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-            const authToken2 = await AsyncStorage.getItem('authToken');
-            // Cancelación explícita: SIEMPRE enviar 'normal' para limpiar alerta
-            await axios.post(`${BACKEND_URL}/sos`, {
-              riderId,
-              nombre,
-              moto,
-              color,
-              ubicacion,
-              fechaHora: new Date().toISOString(),
-              tipo: 'normal',
-              cancel: true,
-            }, {
-              headers: { ...(authToken2 ? { Authorization: `Bearer ${authToken2}` } : {}) }
-            });
-          } catch (e) {}
-          break;
-        default:
-          console.log('Acción no reconocida para SOS activo:', actionIdentifier);
+      if (actionIdentifier === 'CANCELAR_SOS_ACTIVO') {
+        console.log('Cancelando SOS activo desde notificación');
+        await cancelarSOSDesdeNotificacion();
+        await AsyncStorage.removeItem('sosConfirmado');
+        await enviarEstadoNormalBackend();
+      } else {
+        console.log('Acción no reconocida para SOS activo:', actionIdentifier);
       }
     }
   } catch (error) {
     console.error('Error manejando respuesta de notificación:', error);
   }
 };
+
+// Función auxiliar para enviar estado "normal" al backend
+const enviarEstadoNormalBackend = async () => {
+  try {
+    const riderId = await AsyncStorage.getItem('riderId');
+    const nombre = (await AsyncStorage.getItem('nombre')) || 'Usuario';
+    const moto = (await AsyncStorage.getItem('moto')) || 'No especificado';
+    const color = (await AsyncStorage.getItem('color')) || 'No especificado';
+    const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
+    const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+    const authToken = await AsyncStorage.getItem('authToken');
+
+    await axios.post(`${BACKEND_URL}/sos`, {
+      riderId,
+      nombre,
+      moto,
+      color,
+      ubicacion,
+      fechaHora: new Date().toISOString(),
+      tipo: 'normal',
+      cancel: true,
+    }, {
+      timeout: 10000,
+      headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
+    });
+  } catch (e) {
+    console.log('No se pudo enviar estado normal al backend:', e?.message);
+  }
+};
+
 
 // Función para cancelar SOS desde notificación
 const cancelarSOSDesdeNotificacion = async () => {
@@ -213,19 +229,19 @@ export const programarNotificacionesPeriodicas = async () => {
       content: {
         title: "🚨 SOS Rápido Disponible",
         body: "La app está lista para enviar alertas de emergencia",
-        data: { type: 'sos_reminder' },
+        data: { type: 'sos_quick_actions' },
         sound: false, // Sin sonido para no molestar
         priority: Notifications.AndroidNotificationPriority.LOW,
         categoryIdentifier: 'SOS_CATEGORY',
       },
       trigger: {
-        seconds: 900,
+        seconds: 1200,
         repeats: true,
       },
     });
     
     await AsyncStorage.setItem('notificacionesPeriodicasProgramadas', 'true');
-    console.log('Notificaciones periódicas programadas cada 15 minutos');
+    console.log('Notificaciones periódicas programadas cada 20 minutos');
   } catch (error) {
     console.error('Error programando notificaciones periódicas:', error);
   }

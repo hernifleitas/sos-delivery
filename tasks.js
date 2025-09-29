@@ -90,12 +90,24 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
   // Si hay SOS activo, enviar con lógica de SOS
   if (sosActivoValue === "true") {
-    // Requerir confirmación explícita del usuario antes de cualquier envío
-    const sosConfirmado = await AsyncStorage.getItem('sosConfirmado');
-    if (sosConfirmado !== 'true') {
+    // VALIDACIÓN ESTRICTA: Requerir confirmación explícita del usuario antes de cualquier envío
+    const sosConfirmado = await AsyncStorage.getItem('sosConfirmadoPorUsuario');
+    const timestampConfirmacion = await AsyncStorage.getItem('sosConfirmadoTimestamp');
+
+    if (!sosConfirmado || sosConfirmado !== 'true') {
+      console.log('[SOS] Bloqueado: falta confirmación explícita del usuario en background task');
       await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
       await AsyncStorage.setItem('tipoSOS', '');
-      console.log('[SOS] Bloqueado: falta confirmación explícita (sosConfirmado)');
+      return;
+    }
+
+    // Verificar que la confirmación sea reciente (máximo 30 segundos)
+    const ahora = Date.now();
+    const timestamp = timestampConfirmacion ? parseInt(timestampConfirmacion) : 0;
+    if (ahora - timestamp > 30000) {
+      console.log('[SOS] Bloqueado: confirmación expirada en background task');
+      await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
+      await AsyncStorage.setItem('tipoSOS', '');
       return;
     }
     // Anti-falsos positivos: exigir activación reciente y tipo válido

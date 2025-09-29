@@ -57,7 +57,7 @@ class AuthService {
   async register(userData) {
     try {
       console.log('Datos recibidos en authService.register:', userData);
-      const { nombre, email, password, moto, color } = userData;
+      const { nombre, email, password, moto, color, telefono } = userData;
 
       // Verificar si el email ya existe
       const existingUser = await database.findUserByEmail(email);
@@ -793,7 +793,6 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// Obtener todos los usuarios
 // Obtener usuarios simplificado
 router.get('/admin/all-users',
   authService.authenticateToken.bind(authService),

@@ -534,12 +534,12 @@ export default function App() {
         setIsAdmin(false);
         return;
       }
-
-      // Hacemos la petición al endpoint de admin
-      const response = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000
-      });
+      
+        // Hacemos la petición al endpoint de admin
+        const response = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
+        });
 
       // Si obtenemos status 200 y la respuesta tiene datos, es admin
       if (response.status === 200) {
@@ -563,6 +563,28 @@ export default function App() {
   };
 
   const activarSOS = async (tipo) => {
+    // Mostrar diálogo de confirmación antes de activar
+    Alert.alert(
+      `🚨 Confirmar ${tipo.toUpperCase()}`,
+      `¿Estás seguro de que quieres activar una alerta de ${tipo}? Se compartirá tu ubicación en tiempo real en el mapa de riders.`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel"
+        },
+        {
+          text: "Confirmar Alerta",
+          style: "destructive",
+          onPress: async () => {
+            // Proceder con la activación después de confirmación
+            await activarSOSConfirmado(tipo);
+          }
+        }
+      ]
+    );
+  };
+
+  const activarSOSConfirmado = async (tipo) => {
     if (sosActivo) return;
     setTipoSOS(tipo);
     setSosActivo(true);
@@ -598,6 +620,8 @@ export default function App() {
     // Asegurar tracking en background durante SOS
     try { await iniciarUbicacionBackground(); } catch { }
   };
+
+  
 
   const cancelarSOS = async () => {
     try {
@@ -817,110 +841,115 @@ export default function App() {
         }}
       />
 
-      {/* Chat Premium (base) */}
-      <ChatScreen
-        visible={showChat}
-        onClose={() => setShowChat(false)}
-        isPremium={isPremium}
-        isAdmin={isAdmin}
-        currentUserId={user?.id}
-        onUpgrade={() => {
-          setShowChat(false);
-          setShowPremiumPaywall(true);
-        }}
-      />
-
-      {/* Barra superior fija con botones */}
-      <View style={styles.topBar}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
-          {/* Modo Repartiendo deshabilitado: sin badge */}
-        </View>
-        <View style={styles.topButtons}>
-          {/* Botón único para abrir el menú principal */}
-          <TouchableOpacity
-            style={[styles.topButton, { backgroundColor: '#8e44ad' }]}
-            onPress={() => setShowMainMenu(true)}
-          >
-            <Text style={styles.topButtonText}>☰</Text>
-          </TouchableOpacity>
-
-          {/* Botón de perfil */}
-          <TouchableOpacity
-            style={[styles.topButton, { backgroundColor: "#34495e" }]}
-            onPress={() => {
-              setShowUserMenu(true);
-            }}
-          >
-            <Text style={styles.topButtonText}>👤</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Navbar de usuario */}
-      <UserNavbar
-        user={user}
-        onLogout={handleLogout}
-        onUpdateUser={handleUpdateUser}
-        visible={showUserMenu}
-        onClose={() => setShowUserMenu(false)}
-      />
-
-      {/* Panel de administrador */}
+      {/* Panel de administrador - Pantalla completa */}
       {showAdminPanel && (
         <AdminPanel onClose={() => setShowAdminPanel(false)} />
       )}
 
-      {/* Estado del SOS (si está activo) */}
-      {sosActivo && (
-        <View style={styles.sosStatusBar}>
-          {contador > 0 ? (
-            <Text style={styles.sosStatusText}>
-              Enviando {tipoSOS} en {contador}s
-            </Text>
-          ) : (
-            <Text style={styles.sosStatusText}>{tipoSOS} enviado</Text>
+      {/* Contenido principal - solo mostrar cuando NO esté el admin panel */}
+      {!showAdminPanel && (
+        <>
+          {/* Chat Premium (base) */}
+          <ChatScreen
+            visible={showChat}
+            onClose={() => setShowChat(false)}
+            isPremium={isPremium}
+            isAdmin={isAdmin}
+            currentUserId={user?.id}
+            onUpgrade={() => {
+              setShowChat(false);
+              setShowPremiumPaywall(true);
+            }}
+          />
+
+          {/* Barra superior fija con botones */}
+          <View style={styles.topBar}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.welcomeText}>Hola, {user?.nombre || 'Usuario'}</Text>
+              {/* Modo Repartiendo deshabilitado: sin badge */}
+            </View>
+            <View style={styles.topButtons}>
+              {/* Botón único para abrir el menú principal */}
+              <TouchableOpacity
+                style={[styles.topButton, { backgroundColor: '#8e44ad' }]}
+                onPress={() => setShowMainMenu(true)}
+              >
+                <Text style={styles.topButtonText}>☰</Text>
+              </TouchableOpacity>
+
+              {/* Botón de perfil */}
+              <TouchableOpacity
+                style={[styles.topButton, { backgroundColor: "#34495e" }]}
+                onPress={() => {
+                  setShowUserMenu(true);
+                }}
+              >
+                <Text style={styles.topButtonText}>👤</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Navbar de usuario */}
+          <UserNavbar
+            user={user}
+            onLogout={handleLogout}
+            onUpdateUser={handleUpdateUser}
+            visible={showUserMenu}
+            onClose={() => setShowUserMenu(false)}
+          />
+
+          {/* Estado del SOS (si está activo) */}
+          {sosActivo && (
+            <View style={styles.sosStatusBar}>
+              {contador > 0 ? (
+                <Text style={styles.sosStatusText}>
+                  Enviando {tipoSOS} en {contador}s
+                </Text>
+              ) : (
+                <Text style={styles.sosStatusText}>{tipoSOS} enviado</Text>
+              )}
+              <TouchableOpacity style={styles.cancelButton} onPress={cancelarSOS}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.cancelButtonText}>❌</Text>
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           )}
-          <TouchableOpacity style={styles.cancelButton} onPress={cancelarSOS}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.cancelButtonText}>❌</Text>
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
+
+          {/* Botones SOS (si no está activo) */}
+          {!sosActivo && (
+            <View style={styles.sosButtonsContainer}>
+              <TouchableOpacity
+                style={[styles.sosButton, { backgroundColor: "#e74c3c" }]}
+                onPress={() => activarSOS("robo")}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sosButtonText}>🚨</Text>
+                  <Text style={styles.sosButtonText}>SOS ROBO</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sosButton, { backgroundColor: "#f39c12" }]}
+                onPress={() => activarSOS("accidente")}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.sosButtonText}>🚑</Text>
+                  <Text style={styles.sosButtonText}>SOS ACCIDENTE</Text>
+                </View>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </View>
+          )}
+
+          {/* Mapa en pantalla completa */}
+          <View style={styles.mapContainer}>
+            <MapRidersRealtime showMarkers={showMapMarkers} />
+          </View>
+
+          {/* Panel deslizable de alertas */}
+          <AlertasSOS />
+        </>
       )}
-
-      {/* Botones SOS (si no está activo) */}
-      {!sosActivo && (
-        <View style={styles.sosButtonsContainer}>
-          <TouchableOpacity
-            style={[styles.sosButton, { backgroundColor: "#e74c3c" }]}
-            onPress={() => activarSOS("robo")}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.sosButtonText}>🚨</Text>
-              <Text style={styles.sosButtonText}>SOS ROBO</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sosButton, { backgroundColor: "#f39c12" }]}
-            onPress={() => activarSOS("accidente")}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.sosButtonText}>🚑</Text>
-              <Text style={styles.sosButtonText}>SOS ACCIDENTE</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Mapa en pantalla completa */}
-      <View style={styles.mapContainer}>
-        <MapRidersRealtime showMarkers={showMapMarkers} />
-      </View>
-
-      {/* Panel deslizable de alertas */}
-      <AlertasSOS />
     </View>
   );
 }

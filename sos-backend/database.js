@@ -38,6 +38,7 @@ class Database {
           password TEXT NOT NULL,
           moto TEXT NOT NULL,
           color TEXT NOT NULL,
+          telefono TEXT NOT NULL,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW(),
           is_active BOOLEAN DEFAULT TRUE,
@@ -114,13 +115,13 @@ class Database {
   // =================== MÉTODOS USUARIOS ===================
   createUser(userData) {
     return (async () => {
-      const { nombre, email, password, moto, color } = userData;
+      const { nombre, email, password, moto, color, telefono} = userData;
       const sql = `
-        INSERT INTO users (nombre, email, password, moto, color)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, nombre, email, moto, color, created_at
+        INSERT INTO users (nombre, email, password, moto, color,telefono)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, nombre, email, moto, color, telefono, created_at
       `;
-      const { rows } = await this.pool.query(sql, [nombre, email, password, moto, color]);
+      const { rows } = await this.pool.query(sql, [nombre, email, password, moto, color, telefono]);
       return rows[0];
     })();
   }
