@@ -27,6 +27,7 @@ export default function AdminPanel({ onClose }) {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'all'
 
   useEffect(() => {
     loadPendingUsers();
@@ -169,6 +170,80 @@ export default function AdminPanel({ onClose }) {
             } catch (error) {
               console.error("Error rechazando usuario:", error);
               Alert.alert("Error", "Error de conexión al rechazar usuario");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleMakePremium = async (userId, userName) => {
+    Alert.alert(
+      "Activar Premium",
+      `¿Quieres activar Premium para ${userName}? (30 días por defecto)`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Activar",
+          style: "default",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('authToken');
+              const response = await axios.post(
+                `${BACKEND_URL}/auth/admin/make-premium/${userId}`,
+                { days: 30 },
+                {
+                  headers: { 'Authorization': `Bearer ${token}` },
+                  timeout: 15000
+                }
+              );
+
+              if (response.data.success) {
+                Alert.alert("Éxito", `${userName} ahora es Premium por 30 días`);
+                loadAllUsers(); // Recargar lista
+              } else {
+                Alert.alert("Error", response.data.message || "Error activando Premium");
+              }
+            } catch (error) {
+              console.error("Error activando Premium:", error);
+              Alert.alert("Error", "Error de conexión al activar Premium");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleRemovePremium = async (userId, userName) => {
+    Alert.alert(
+      "Quitar Premium",
+      `¿Estás seguro de que quieres quitar Premium a ${userName}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Quitar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('authToken');
+              const response = await axios.post(
+                `${BACKEND_URL}/auth/admin/remove-premium/${userId}`,
+                {},
+                {
+                  headers: { 'Authorization': `Bearer ${token}` },
+                  timeout: 15000
+                }
+              );
+
+              if (response.data.success) {
+                Alert.alert("Éxito", "Premium removido correctamente");
+                loadAllUsers(); // Recargar lista
+              } else {
+                Alert.alert("Error", response.data.message || "Error quitando Premium");
+              }
+            } catch (error) {
+              console.error("Error quitando Premium:", error);
+              Alert.alert("Error", "Error de conexión al quitar Premium");
             }
           }
         }
@@ -322,6 +397,91 @@ export default function AdminPanel({ onClose }) {
       textAlign: 'center',
       marginTop: 20,
     },
+    tabContainer: {
+      flexDirection: 'row',
+      marginBottom: 20,
+      backgroundColor: isDarkMode ? "#2d2d2d" : "#f8f9fa",
+      borderRadius: 8,
+      padding: 4,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 6,
+      alignItems: 'center',
+    },
+    activeTab: {
+      backgroundColor: "#3498db",
+    },
+    inactiveTab: {
+      backgroundColor: 'transparent',
+    },
+    tabText: {
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    activeTabText: {
+      color: "#ffffff",
+    },
+    inactiveTabText: {
+      color: isDarkMode ? "#cccccc" : "#666666",
+    },
+    premiumButton: {
+      backgroundColor: "#f39c12",
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 6,
+      marginTop: 8,
+      marginRight: 8,
+    },
+    removePremiumButton: {
+      backgroundColor: "#e67e22",
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 6,
+      marginTop: 8,
+    },
+    premiumBadge: {
+      backgroundColor: "#f39c12",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      alignSelf: 'flex-start',
+      marginBottom: 8,
+    },
+    premiumBadgeText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: 'bold',
+    },
+    adminBadge: {
+      backgroundColor: "#9b59b6",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      alignSelf: 'flex-start',
+      marginBottom: 8,
+    },
+    adminBadgeText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: 'bold',
+    },
+    userStatus: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      marginBottom: 5,
+    },
+    approvedStatus: {
+      color: "#27ae60",
+    },
+    pendingStatus: {
+      color: "#f39c12",
+    },
+    rejectedStatus: {
+      color: "#e74c3c",
+    },
   });
 
   const renderPendingUserItem = (user) => (
@@ -352,17 +512,81 @@ export default function AdminPanel({ onClose }) {
     </View>
   );
 
+  const renderAllUserItem = (user) => {
+    const isPremium = user.role === 'premium' || user.role === 'admin';
+    const isAdmin = user.role === 'admin';
+    const premiumExpired = user.premium_expires_at && new Date(user.premium_expires_at) < new Date();
+    
+    return (
+      <View key={user.id} style={dynamicStyles.userCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          {isAdmin && (
+            <View style={dynamicStyles.adminBadge}>
+              <Text style={dynamicStyles.adminBadgeText}>👑 ADMIN</Text>
+            </View>
+          )}
+          {isPremium && !isAdmin && (
+            <View style={dynamicStyles.premiumBadge}>
+              <Text style={dynamicStyles.premiumBadgeText}>⭐ PREMIUM</Text>
+            </View>
+          )}
+        </View>
+        
+        <Text style={dynamicStyles.userName}>{user.nombre}</Text>
+        <Text style={dynamicStyles.userEmail}>{user.email}</Text>
+        <Text style={dynamicStyles.userInfo}>Moto: {user.moto || 'No especificada'}</Text>
+        <Text style={dynamicStyles.userInfo}>Color: {user.color || 'No especificado'}</Text>
+        
+        <Text style={[
+          dynamicStyles.userStatus,
+          user.status === 'approved' ? dynamicStyles.approvedStatus :
+          user.status === 'pending' ? dynamicStyles.pendingStatus :
+          dynamicStyles.rejectedStatus
+        ]}>
+          Estado: {user.status === 'approved' ? 'Aprobado' : 
+                   user.status === 'pending' ? 'Pendiente' : 'Rechazado'}
+        </Text>
+        
+        {user.premium_expires_at && (
+          <Text style={dynamicStyles.userInfo}>
+            Premium expira: {formatDate(user.premium_expires_at)}
+            {premiumExpired && ' (EXPIRADO)'}
+          </Text>
+        )}
+        
+        <Text style={dynamicStyles.userDate}>
+          Registrado: {formatDate(user.created_at)}
+        </Text>
+
+        {!isAdmin && user.status === 'approved' && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {!isPremium || premiumExpired ? (
+              <TouchableOpacity
+                style={dynamicStyles.premiumButton}
+                onPress={() => handleMakePremium(user.id, user.nombre)}
+              >
+                <Text style={dynamicStyles.buttonText}>⭐ Activar Premium</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={dynamicStyles.removePremiumButton}
+                onPress={() => handleRemovePremium(user.id, user.nombre)}
+              >
+                <Text style={dynamicStyles.buttonText}>❌ Quitar Premium</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={dynamicStyles.container}>
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={isDarkMode ? "#1a1a1a" : "#ffffff"}
-      />
-
       <View style={dynamicStyles.header}>
         <Text style={dynamicStyles.headerTitle}>Panel de Administración</Text>
         <TouchableOpacity style={dynamicStyles.backButton} onPress={onClose}>
-          <Text style={dynamicStyles.backButtonText}>← Volver</Text>
+          <Text style={dynamicStyles.backButtonText}>✖</Text>
         </TouchableOpacity>
       </View>
 
@@ -372,23 +596,44 @@ export default function AdminPanel({ onClose }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <Text style={dynamicStyles.title}>👥 Usuarios Pendientes</Text>
-        <Text style={dynamicStyles.subtitle}>
-          Gestiona las solicitudes de registro de nuevos usuarios
-        </Text>
-
-        {loading ? (
-          <Text style={dynamicStyles.loadingText}>Cargando usuarios pendientes...</Text>
-        ) : pendingUsers.length === 0 ? (
-          <View style={dynamicStyles.emptyState}>
-            <Text style={dynamicStyles.emptyStateText}>🎉 ¡No hay usuarios pendientes!</Text>
-            <Text style={dynamicStyles.emptyStateSubtext}>
-              Todos los usuarios han sido procesados
+        <View style={dynamicStyles.tabContainer}>
+          <TouchableOpacity
+            style={[dynamicStyles.tab, activeTab === 'pending' ? dynamicStyles.activeTab : dynamicStyles.inactiveTab]}
+            onPress={() => setActiveTab('pending')}
+          >
+            <Text style={[dynamicStyles.tabText, activeTab === 'pending' ? dynamicStyles.activeTabText : dynamicStyles.inactiveTabText]}>
+              Pendientes ({pendingUsers?.length || 0} )
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[dynamicStyles.tab, activeTab === 'all' ? dynamicStyles.activeTab : dynamicStyles.inactiveTab]}
+            onPress={() => setActiveTab('all')}
+          >
+            <Text style={[dynamicStyles.tabText, activeTab === 'all' ? dynamicStyles.activeTabText : dynamicStyles.inactiveTabText]}>
+              Todos ({allUsers?.length || 0})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading && <Text style={dynamicStyles.loadingText}>Cargando usuarios...</Text>}
+
+        {activeTab === 'pending' && !loading && (
+          pendingUsers.length > 0 ? pendingUsers.map(renderPendingUserItem) :
+          <View style={dynamicStyles.emptyState}>
+            <Text style={dynamicStyles.emptyStateText}>No hay usuarios pendientes.</Text>
+            <Text style={dynamicStyles.emptyStateSubtext}>Actualiza para comprobar nuevamente.</Text>
           </View>
-        ) : (
-          pendingUsers.map(renderPendingUserItem)
         )}
+
+        {activeTab === 'all' && !loading && (
+          allUsers.length > 0 ? allUsers.map(renderAllUserItem) :
+          <View style={dynamicStyles.emptyState}>
+            <Text style={dynamicStyles.emptyStateText}>No hay usuarios registrados.</Text>
+            <Text style={dynamicStyles.emptyStateSubtext}>Actualiza para comprobar nuevamente.</Text>
+          </View>
+        )}
+
       </ScrollView>
     </SafeAreaView>
   );

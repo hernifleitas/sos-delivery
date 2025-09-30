@@ -286,7 +286,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
       } else if (error.response?.status === 400) {
         Alert.alert("Error", error.response.data?.message || "Datos inválidos");
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
-        Alert.alert("Error", "Error de conexión. Verifica que el backend esté funcionando.");
+        Alert.alert("Error", "Error de conexión. Verifica tu conexion a internet.");
       } else {
         Alert.alert("Error", "Error de conexión. Verifica tu internet.");
       }
@@ -337,7 +337,7 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
       if (error.response?.status === 400) {
         setResetMessage(error.response.data?.message || "Error al enviar el email");
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
-        setResetMessage("Error de conexión. Verifica que el backend esté funcionando.");
+        setResetMessage("Error de conexión. Verifica tu conexion a internet");
       } else {
         setResetMessage("Error de conexión. Verifica tu internet.");
       }

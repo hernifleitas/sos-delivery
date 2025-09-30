@@ -799,7 +799,9 @@ router.get('/admin/all-users',
   authService.requireAdmin.bind(authService),
   async (req, res) => {
     try {
+      console.log("Ruta /admin/all-users llamada por usuario", req.user.id);
       const result = await authService.getAllUsers();
+      console.log("Resultados getAllUsers:", result);
       res.json(result);
     } catch (error) {
       console.error('Error obteniendo todos los usuarios:', error);

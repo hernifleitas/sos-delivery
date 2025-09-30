@@ -237,6 +237,16 @@ class Database {
     })();
   }
 
+  isAdmin(userId){
+    return (async() => {
+      const {rows} = await this.pool.query(
+        'SELECT role FROM users WHERE id = $1 AND is_active = TRUE', 
+      [userId]
+    );
+    return rows.length > 0 && rows[0].role === 'admin';
+    })();
+  }
+
   async makePremium(userId, days = 30) {
     const client = await this.pool.connect();
     try {
