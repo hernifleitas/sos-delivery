@@ -218,13 +218,13 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
 
       if (!ultimoError || (ahora - parseInt(ultimoError)) > 30000) {
         const errorMsg = JSON.stringify([
-          { error: true, message: "Error de conexión con el servidor. Verifica que el backend esté funcionando." }
+          { error: true, message: "Error de conexión con el servidor. Verifica tu conexion a internet" }
         ]);
         if (webReady) {
           webviewRef.current?.postMessage(errorMsg);
         } else {
           lastRidersRef.current = [
-            { error: true, message: "Error de conexión con el servidor. Verifica que el backend esté funcionando." }
+            { error: true, message: "Error de conexión con el servidor. verifica tu conexion a internet" }
           ];
         }
         await AsyncStorage.setItem('ultimoErrorMapa', ahora.toString());
