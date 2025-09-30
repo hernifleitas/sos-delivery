@@ -71,6 +71,7 @@ router.get('/subscriptions', authenticateToken, async (req, res) => {
 
 // Crear nueva suscripción premium (para iniciar proceso de pago)
 router.post('/create-subscription', authenticateToken, async (req, res) => {
+  console.log("POST /create-subscription recibido", req.body);
   try {
     const userId = req.user.id;
     const { preference_id } = req.body;
