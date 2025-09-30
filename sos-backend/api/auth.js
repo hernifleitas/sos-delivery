@@ -453,13 +453,16 @@ class AuthService {
 
   async getAllUsers() {
     try {
+      console.log ('AuthService.getAllUsers() llamado')
       const users = await database.getAllUsers();
+      console.log ("usuarios obtenidos de DB:", users?.length || 0);
       return {
         success: true,
         users
       };
     } catch (error) {
-      console.error('Error obteniendo todos los usuarios:', error);
+
+      console.error('Error en AuthService.getAllUsers:', error);
       return {
         success: false,
         message: 'Error interno del servidor'
@@ -829,6 +832,27 @@ router.get('/admin/pending-users',
       });
     }
   });
+
+
+  router.get('/admin/all-users-test',
+    authService.authenticateToken.bind(authService),
+    authService.requireAdmin.bind(authService),
+    async (req,res) =>{
+      try{
+      console.log("ruta test /admin/all-users-test llamada por usuario", req.user.id);
+      const result = await authService.getAllUsers();
+      console.log("Resultados getAllUsers:", result);
+      res.json(result);
+      }
+      catch(error){
+        console.error('Error obteniendo todos los usuarios:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Error interno del servidor'
+        });
+      }
+    }
+  )
 
 // Aprobar usuario
 router.post('/admin/approve-user/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
