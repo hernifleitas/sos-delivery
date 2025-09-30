@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 require('dotenv').config();
+const bodyParser = require('body-parser');
+const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
@@ -317,6 +319,27 @@ app.use(`${API_PREFIX}/chat`, chatRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 // Rutas de premium
 app.use(`${API_PREFIX}/premium`, premiumRoutes);
+
+app.get('/premium', (req, res) => {
+    console.log('acceso a /premium -sirviendo index.html');
+    const filePath = path.join(__dirname, 'public', 'premium', 'index.html');
+    console.log("ruta del archivo:", filePath);
+    res.sendFile(filePath);
+});
+
+app.get('/premium/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'premium', 'index.html'));
+})
+
+
+app.get('/premium/styles.css',(req, res)=> {
+  res.sendFile(path.join(__dirname, 'public', 'premium', 'styles.css'));
+})
+
+app.get('/premium/script.js',(req, res)=> {
+  res.sendFile(path.join(__dirname, 'public', 'premium', 'script.js'));
+})
+
 //debug
 console.log('Rutas auth:', authRoutes.stack
   .filter(r => r.route)
