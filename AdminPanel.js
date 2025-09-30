@@ -38,7 +38,7 @@ export default function AdminPanel({ onClose }) {
       const token = await AsyncStorage.getItem('authToken');
       console.log('Token obtenido:', token ? 'Sí' : 'No');
 
-      const response = await axios.get(`${BACKEND_URL}/auth/admin/pending-users`, {
+      const response = await axios.get(`${BACKEND_URL}/auth/admin/pendingg-userss`, {
         headers: { 'Authorization': `Bearer ${token}` },
         timeout: 10000
       });
