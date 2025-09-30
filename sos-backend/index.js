@@ -26,9 +26,12 @@ app.use((req, res, next) => {
   next();
 })
 
-// Ruta principal de Premium
+// Servir archivos estáticos de premium
+app.use('/premium', express.static(path.join(__dirname, 'public/premium')));
+
+// Ruta principal para index.html de premium
 app.get('/premium', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'premium', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public/premium/index.html'));
 });
 
 // Guardar info de riders en memoria
