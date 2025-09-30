@@ -451,42 +451,6 @@ class AuthService {
     }
   }
 
-  async getAllUsersComplete() {
-    try {
-      console.log ('AuthService.getAllUsersComplete() llamado')
-      const users = await database.getAllUsersComplete();
-      console.log ("usuarios obtenidos de DB:", users?.length || 0);
-
-      const processedUsers = users.map(user => ({
-        id: user.id,
-        nombre: user.nombre,
-        email: user.email,
-        moto: user.moto || 'no especificado',
-        color: user.color || 'no especificado',
-        telefono: user.telefono,
-        created_at: user.created_at,
-        status: user.status || 'pending',
-        role: user.role || 'user',
-        premium_expires_at: user.premium_expires_at,
-        is_active: user.is_active
-      }));
-      console.log("AuthService.getAllUsersComplete() procesados:", processedUsers?.length || 0)
-
-      return {
-        success: true,
-        users:processedUsers,
-        total: processedUsers.length
-      };
-    } catch (error) {
-
-      console.error('Error en AuthService.getAllUsers:', error);
-      return {
-        success: false,
-        message: 'Error interno del servidor'
-      };
-    }
-  }
-
   async approveUser(userId) {
     try {
       const result = await database.approveUser(userId);
@@ -639,67 +603,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Promover a Premium por 30 días (solo admin)
-router.post('/admin/make-premium/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { days = 30 } = req.body; // Por defecto 30 días si no se especifica
-
-    if (isNaN(days) || days < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'El número de días debe ser un número mayor a 0'
-      });
-    }
-
-    const result = await database.makePremium(userId, days);
-
-    if (result.success) {
-      res.json({
-        success: true,
-        message: `Usuario promovido a Premium por ${days} días`,
-        expiresAt: result.expiresAt
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Error al actualizar el usuario a Premium'
-      });
-    }
-  } catch (error) {
-    console.error('Error promoviendo a Premium:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor'
-    });
-  }
-});
-
-// Quitar Premium (solo admin)
-router.post('/admin/remove-premium/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const result = await database.removePremium(userId);
-
-    if (result.success) {
-      res.json({
-        success: true,
-        message: result.message || 'Se ha quitado el estado Premium al usuario'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: result.message || 'No se pudo quitar el estado Premium'
-      });
-    }
-  } catch (error) {
-    console.error('Error quitando Premium:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor al procesar la solicitud'
-    });
-  }
-});
 
 // Ruta de login
 router.post('/login', async (req, res) => {
@@ -813,30 +716,6 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-router.get('/admin/all-users-test', async (req, res) => {
-  console.log('Llegamos a all-users-test');
-  res.json({ success: true, message: 'Funciona' });
-});
-
-// Ruta para obtener todos los usuarios
-router.get('/admin/all-users',
-  authService.authenticateToken.bind(authService),
-  authService.requireAdmin.bind(authService),
-  async (req, res) => {
-    try {
-      console.log("Ruta /admin/all-users llamada por usuario");
-      const result = await authService.getAllUsersComplete();
-      console.log("Resultados getAllUsers:", result);
-      res.json(result);
-    } catch (error) {
-      console.error('Error obteniendo todos los usuarios:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor'
-      });
-    }
-  });
-
 // Obtener usuarios pendientes
 router.get('/admin/pending-users',
   authService.authenticateToken.bind(authService),
@@ -887,32 +766,6 @@ router.post('/admin/reject-user/:userId', authService.authenticateToken.bind(aut
     }
   } catch (error) {
     console.error('Error rechazando usuario:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor'
-    });
-  }
-});
-
-// Ruta para hacer administrador (solo para desarrollo)
-router.post('/admin/make-admin/:userId', authService.authenticateToken.bind(authService), async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const result = await database.makeAdmin(userId);
-
-    if (result.changes > 0) {
-      res.json({
-        success: true,
-        message: 'Usuario promovido a administrador'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'Usuario no encontrado'
-      });
-    }
-  } catch (error) {
-    console.error('Error promoviendo a administrador:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'

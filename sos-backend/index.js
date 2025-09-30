@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
@@ -9,11 +8,13 @@ const authRoutes = require('./api/auth');
 const chatRoutes = require('./api/chat');
 const notificationsRoutes = require('./api/notifications');
 const notifications = require('./notifications');
+const premiumRoutes = require('./api/premium');
 const database = require('./database');
 
 const app = express();
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(exoress.static('public'));
 app.use(cors());
 
 
@@ -306,18 +307,20 @@ app.get("/alertas", (req, res) => {
 // Configuración de rutas API
 const API_PREFIX = '/api';
 
-// Rutas de autenticación
+// Rutas de autenticación (sin prefijo para compatibilidad)
+app.use('/auth', authRoutes);
+
 app.use(`${API_PREFIX}/auth`, authRoutes);
 // Rutas de chat
 app.use(`${API_PREFIX}/chat`, chatRoutes);
 // Rutas de notificaciones
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+// Rutas de premium
+app.use(`${API_PREFIX}/premium`, premiumRoutes);
 //debug
 console.log('Rutas auth:', authRoutes.stack
   .filter(r => r.route)
   .map(r => r.route.path));
-
-
 // Middleware para verificar autenticación en rutas protegidas
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
