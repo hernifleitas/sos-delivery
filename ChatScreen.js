@@ -311,7 +311,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
             onSubmitEditing={send}
             returnKeyType="send"
           />
-          <TouchableOpacity style={[styles.sendBtn, (!isPremium && !isAdmin) && { opacity: 0.5 }]} onPress={send} disabled={!isPremium}>
+          <TouchableOpacity style={[styles.sendBtn, (!isPremium && !isAdmin) && { opacity: 0.5 }]} onPress={send} disabled={!isPremium && !isAdmin}>
             <Text style={styles.sendText}>Enviar</Text>
           </TouchableOpacity>
         </View>

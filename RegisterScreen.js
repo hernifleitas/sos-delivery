@@ -429,7 +429,7 @@ export default function RegisterScreen({ onRegisterSuccess, onNavigate }) {
 
                 <Text style={{ marginTop: 10, fontSize: 14, color: isDarkMode ? "#ffffff" : "#2c3e50" }}>
                   11. <Text style={{ fontWeight: "bold" }}>Contacto:</Text> Para consultas o solicitud de eliminación de tu cuenta, podés contactar al soporte de Rider SOS Delivery en{" "}
-                  <Text style={{ color: "#e74c3c", fontWeight: "bold" }}>soporte@ridersos.com</Text>.
+                  <Text style={{ color: "#e74c3c", fontWeight: "bold" }}>soporteridersos@gmail.com</Text>.
                 </Text>
                 {"\n\n"}⚠️ **IMPORTANTE:** La app **no reemplaza servicios de emergencia oficiales**. Siempre llama a la policía, bomberos o servicios médicos en caso de urgencia.
               </Text>

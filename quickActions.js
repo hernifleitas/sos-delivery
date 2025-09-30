@@ -89,46 +89,22 @@ export const manejarRespuestaNotificacion = async (response) => {
       switch (actionIdentifier) {
         case 'SOS_ROBO':
           console.log('Tocaron SOS Robo desde notificación');
-
-          Alert.alert(
-            "Confirmar SOS Robo",
-            "¿Querés activar el SOS Robo?",
-            [
-              { text: "Cancelar", style: "cancel" },
-              {
-                text: "Confirmar",
-                onPress: async () => {
-                  await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
-                  await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
-                  await activarSOSDesdeNotificacion('robo');
-                }
-              }
-            ],
-            { cancelable: false }
-          );
+          await AsyncStorage.setItem('sosActivo', 'true');
+          await AsyncStorage.setItem('sosEnviado', 'false');
+          await AsyncStorage.setItem('sosConfirmado', 'true');
+          await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
+          await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
+          await activarSOSDesdeNotificacion('robo');
           break;
-
         case 'SOS_ACCIDENTE':
           console.log('Tocaron SOS Accidente desde notificación');
-
-          Alert.alert(
-            "Confirmar SOS Accidente",
-            "¿Querés activar el SOS Accidente?",
-            [
-              { text: "Cancelar", style: "cancel" },
-              {
-                text: "Confirmar",
-                onPress: async () => {
-                  await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
-                  await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
-                  await activarSOSDesdeNotificacion('accidente');
-                }
-              }
-            ],
-            { cancelable: false }
-          );
+          await AsyncStorage.setItem('sosActivo', 'true');
+          await AsyncStorage.setItem('sosEnviado', 'false');
+          await AsyncStorage.setItem('sosConfirmado', 'true');
+          await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
+          await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
+          await activarSOSDesdeNotificacion('accidente');
           break;
-
         case 'CANCELAR_SOS':
           console.log('Cancelando SOS desde notificación');
           await AsyncStorage.setItem('sosActivo', 'false');
