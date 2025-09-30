@@ -16,7 +16,7 @@ const database = require('./database');
 const app = express();
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors());
 
 //middleware de debugging 
@@ -26,26 +26,10 @@ app.use((req, res, next) => {
   next();
 })
 
+// Ruta principal de Premium
 app.get('/premium', (req, res) => {
-  console.log('acceso a /premium -sirviendo index.html');
-  const filePath = path.join(__dirname, 'public', 'premium', 'index.html');
-  console.log("ruta del archivo:", filePath);
-  res.sendFile(filePath);
+  res.sendFile(path.join(__dirname, 'public', 'premium', 'index.html'));
 });
-
-app.get('/premium/', (req, res) => {
-res.sendFile(path.join(__dirname, 'public', 'premium', 'index.html'));
-})
-
-
-app.get('/premium/styles.css',(req, res)=> {
-res.sendFile(path.join(__dirname, 'public', 'premium', 'styles.css'));
-})
-
-app.get('/premium/script.js',(req, res)=> {
-res.sendFile(path.join(__dirname, 'public', 'premium', 'script.js'));
-})
-
 
 // Guardar info de riders en memoria
 let riders = {};

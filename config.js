@@ -10,7 +10,7 @@ export const CONFIG = {
   
   // Intervalos
   LOCATION_INTERVAL: 2 * 60 * 1000, // 2 minutos para SOS
-  MAP_UPDATE_INTERVAL: 5000,        // 30 segundos para mapa
+  MAP_UPDATE_INTERVAL: 3000,        // 30 segundos para mapa
   ALERTAS_UPDATE_INTERVAL: 10000,    // 10 segundos para alertas
   
   // Configuración de notificaciones
