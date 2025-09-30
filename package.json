@@ -29,7 +29,9 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "@eslint/js": "^9.36.0",
+    "globals": "^16.4.0"
   },
   "private": true
 }
