@@ -451,14 +451,31 @@ class AuthService {
     }
   }
 
-  async getAllUsers() {
+  async getAllUsersComplete() {
     try {
-      console.log ('AuthService.getAllUsers() llamado')
-      const users = await database.getAllUsers();
+      console.log ('AuthService.getAllUsersComplete() llamado')
+      const users = await database.getAllUsersComplete();
       console.log ("usuarios obtenidos de DB:", users?.length || 0);
+
+      const processedUsers = users.map(user => ({
+        id: user.id,
+        nombre: user.nombre,
+        email: user.email,
+        moto: user.moto || 'no especificado',
+        color: user.color || 'no especificado',
+        telefono: user.telefono,
+        created_at: user.created_at,
+        status: user.status || 'pending',
+        role: user.role || 'user',
+        premium_expires_at: user.premium_expires_at,
+        is_active: user.is_active
+      }));
+      console.log("AuthService.getAllUsersComplete() procesados:", processedUsers?.length || 0)
+
       return {
         success: true,
-        users
+        users:processedUsers,
+        total: processedUsers.length
       };
     } catch (error) {
 
@@ -796,14 +813,14 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// Obtener usuarios simplificado
+// Ruta para obtener todos los usuarios
 router.get('/admin/all-users',
   authService.authenticateToken.bind(authService),
   authService.requireAdmin.bind(authService),
   async (req, res) => {
     try {
       console.log("Ruta /admin/all-users llamada por usuario", req.user.id);
-      const result = await authService.getAllUsers();
+      const result = await authService.getAllUsersComplete();
       console.log("Resultados getAllUsers:", result);
       res.json(result);
     } catch (error) {
@@ -813,8 +830,7 @@ router.get('/admin/all-users',
         message: 'Error interno del servidor'
       });
     }
-  }
-);
+  });
 
 // Obtener usuarios pendientes
 router.get('/admin/pending-users',
@@ -832,27 +848,6 @@ router.get('/admin/pending-users',
       });
     }
   });
-
-
-  router.get('/admin/all-users-test',
-    authService.authenticateToken.bind(authService),
-    authService.requireAdmin.bind(authService),
-    async (req,res) =>{
-      try{
-      console.log("ruta test /admin/all-users-test llamada por usuario", req.user.id);
-      const result = await authService.getAllUsers();
-      console.log("Resultados getAllUsers:", result);
-      res.json(result);
-      }
-      catch(error){
-        console.error('Error obteniendo todos los usuarios:', error);
-        res.status(500).json({
-          success: false,
-          message: 'Error interno del servidor'
-        });
-      }
-    }
-  )
 
 // Aprobar usuario
 router.post('/admin/approve-user/:userId', authService.authenticateToken.bind(authService), authService.requireAdmin.bind(authService), async (req, res) => {

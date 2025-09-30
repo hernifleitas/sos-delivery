@@ -115,7 +115,7 @@ class Database {
   // =================== MÉTODOS USUARIOS ===================
   createUser(userData) {
     return (async () => {
-      const { nombre, email, password, moto, color, telefono} = userData;
+      const { nombre, email, password, moto, color, telefono } = userData;
       const sql = `
         INSERT INTO users (nombre, email, password, moto, color,telefono)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -174,13 +174,27 @@ class Database {
     })();
   }
 
-  getAllUsers() {
+  getAllUsersComplete() {
     return (async () => {
+      console.log("Database.getAllUsersComplete() -- ejectando Consulta")
       const { rows } = await this.pool.query(`
-        SELECT id, nombre, email, moto, color, telefono, created_at, status, role, premium_expires_at
+        SELECT
+         id,
+         nombre,
+         email, 
+         moto, 
+         color,
+         COALESCE(telefono, '') as telefono,
+         created_at,
+         status,
+          role, 
+          premium_expires_at
+          is_active
         FROM users
         WHERE is_active = TRUE
+        ORDER BY created_at DESC
       `);
+      console.log("Database.getAllUsersComplete() -- Consulta ejecutada")
       return rows;
     })();
   }
@@ -237,13 +251,13 @@ class Database {
     })();
   }
 
-  isAdmin(userId){
-    return (async() => {
-      const {rows} = await this.pool.query(
-        'SELECT role FROM users WHERE id = $1 AND is_active = TRUE', 
-      [userId]
-    );
-    return rows.length > 0 && rows[0].role === 'admin';
+  isAdmin(userId) {
+    return (async () => {
+      const { rows } = await this.pool.query(
+        'SELECT role FROM users WHERE id = $1 AND is_active = TRUE',
+        [userId]
+      );
+      return rows.length > 0 && rows[0].role === 'admin';
     })();
   }
 
@@ -251,24 +265,24 @@ class Database {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       // Calcular fecha de expiración
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + days);
-      
+
       // Actualizar rol del usuario
       await client.query(
-        'UPDATE users SET role = $1, premium_expires_at = $2, updated_at = NOW() WHERE id = $3', 
+        'UPDATE users SET role = $1, premium_expires_at = $2, updated_at = NOW() WHERE id = $3',
         ['premium', endDate, userId]
       );
-      
+
       // Registrar la suscripción
       await client.query(
         `INSERT INTO premium_subscriptions (user_id, start_date, end_date) 
          VALUES ($1, NOW(), $2) RETURNING id`,
         [userId, endDate]
       );
-      
+
       await client.query('COMMIT');
       return { success: true, expiresAt: endDate };
     } catch (error) {
@@ -284,17 +298,17 @@ class Database {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       // Verificar si el usuario es admin (no se puede quitar premium a un admin)
       const adminCheck = await client.query(
         'SELECT role FROM users WHERE id = $1 AND role = $2',
         [userId, 'admin']
       );
-      
+
       if (adminCheck.rows.length > 0) {
         return { changes: 0, message: 'No se puede quitar premium a un administrador' };
       }
-      
+
       // Quitar premium y limpiar fecha de expiración
       const result = await client.query(
         `UPDATE users 
@@ -303,7 +317,7 @@ class Database {
          RETURNING id`,
         [userId]
       );
-      
+
       // Desactivar suscripciones activas
       await client.query(
         `UPDATE premium_subscriptions 
@@ -311,9 +325,9 @@ class Database {
          WHERE user_id = $1 AND is_active = TRUE`,
         [userId]
       );
-      
+
       await client.query('COMMIT');
-      return { 
+      return {
         changes: result.rowCount,
         success: result.rowCount > 0,
         message: result.rowCount > 0 ? 'Premium eliminado correctamente' : 'Usuario no encontrado o no era premium'
@@ -335,30 +349,30 @@ class Database {
         'SELECT role FROM users WHERE id = $1 AND role = $2 AND is_active = TRUE',
         [userId, 'admin']
       );
-      
+
       if (adminCheck.rows.length > 0) return true;
-      
+
       // Verificar usuario premium con expiración
       const { rows } = await client.query(
         `SELECT role, premium_expires_at FROM users 
          WHERE id = $1 AND is_active = TRUE`,
         [userId]
       );
-      
+
       if (rows.length === 0) return false;
-      
+
       const user = rows[0];
-      
+
       // Si no es premium, retornar falso
       if (user.role !== 'premium') return false;
-      
+
       // Si no tiene fecha de expiración, asumir premium permanente
       if (!user.premium_expires_at) return true;
-      
+
       // Verificar si la suscripción ha expirado
       const now = new Date();
       const expiresAt = new Date(user.premium_expires_at);
-      
+
       if (now > expiresAt) {
         // Si expiró, actualizar el rol a 'user'
         await client.query(
@@ -367,7 +381,7 @@ class Database {
         );
         return false;
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error en isPremium:', error);
