@@ -813,13 +813,18 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+router.get('/admin/all-users-test', async (req, res) => {
+  console.log('Llegamos a all-users-test');
+  res.json({ success: true, message: 'Funciona' });
+});
+
 // Ruta para obtener todos los usuarios
 router.get('/admin/all-users',
   authService.authenticateToken.bind(authService),
   authService.requireAdmin.bind(authService),
   async (req, res) => {
     try {
-      console.log("Ruta /admin/all-users llamada por usuario", req.user.id);
+      console.log("Ruta /admin/all-users llamada por usuario");
       const result = await authService.getAllUsersComplete();
       console.log("Resultados getAllUsers:", result);
       res.json(result);
