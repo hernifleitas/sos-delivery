@@ -2,8 +2,8 @@
 export const CONFIG = {
   // URLs del backend
   BACKEND_URL: __DEV__ 
-    ? 'http://192.168.1.51:3000'  // Desarrollo
-    : 'http://192.168.1.51:3000',     // Producción
+    ? 'https://sos-backend-8cpa.onrender.com'  // Desarrollo
+    : 'https://sos-backend-8cpa.onrender.com',     // Producción
     
   // Timeouts
   API_TIMEOUT: 15000,
