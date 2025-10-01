@@ -717,7 +717,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // Obtener usuarios pendientes
-router.get('/admin/pending-userss',
+router.get('/admin/pending-aser',
   authService.authenticateToken.bind(authService),
   authService.requireAdmin.bind(authService),
   async (req, res) => {
