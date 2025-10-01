@@ -6,7 +6,7 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
-const authRoutes = require('./api/auth');
+const {router: authRoutes} = require('./api/auth');
 const chatRoutes = require('./api/chat');
 const notificationsRoutes = require('./api/notifications');
 const notifications = require('./notifications');
@@ -323,6 +323,11 @@ app.get("/alertas", (req, res) => {
 // Configuración de rutas API
 const API_PREFIX = '/api';
 
+console.log('chatRoutes', chatRoutes)
+console.log('authRoutes:', authRoutes);
+console.log('notificationsRoutes:', notificationsRoutes);
+console.log('premiumRoutes:', premiumRoutes);
+
 // Rutas de autenticación (sin prefijo para compatibilidad)
 app.use('/auth', authRoutes);
 
@@ -375,7 +380,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 // Inicializar chat en tiempo real
 require('./chat')(io);
-
+  
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Servidor Rider SOS corriendo en http://${HOST}:${PORT}`);
   console.log(`📧 Sistema de emails configurado`);
