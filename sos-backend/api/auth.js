@@ -92,7 +92,8 @@ class AuthService {
         email: email.toLowerCase().trim(),
         password: hashedPassword,
         moto: moto.trim(),
-        color: color.trim()
+        color: color.trim(),
+        telefono: telefono.trim()
       });
 
       return {
@@ -105,7 +106,8 @@ class AuthService {
           moto: newUser.moto,
           color: newUser.color,
           created_at: newUser.created_at,
-          status: 'pending'
+          status: 'pending',
+          telefono: newUser.telefono
         }
       };
     } catch (error) {
@@ -166,7 +168,8 @@ class AuthService {
           moto: user.moto,
           color: user.color,
           created_at: user.created_at,
-          role: user.role || 'user'
+          role: user.role || 'user',
+          telefono: user.telefono
         },
         token
       };
@@ -207,7 +210,8 @@ class AuthService {
           moto: user.moto,
           color: user.color,
           created_at: user.created_at,
-          role: user.role || 'user'
+          role: user.role || 'user',
+          telefono: user.telefono
         }
       };
     } catch (error) {
@@ -717,7 +721,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // Obtener usuarios pendientes
-router.get('/admin/pending-aser',
+router.get('/admin/pending-users',
   authService.authenticateToken.bind(authService),
   authService.requireAdmin.bind(authService),
   async (req, res) => {
@@ -772,5 +776,4 @@ router.post('/admin/reject-user/:userId', authService.authenticateToken.bind(aut
     });
   }
 });
-
-module.exports = router;
+module.exports = {router, authService}

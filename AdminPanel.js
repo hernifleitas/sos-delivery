@@ -223,6 +223,11 @@ export default function AdminPanel({ onClose }) {
       color: isDarkMode ? "#cccccc" : "#666666",
       marginBottom: 5,
     },
+    userTelefono: {
+      fontSize: 14,
+      color: isDarkMode ? "#cccccc" : "#666666",
+      marginBottom: 5,
+    },
     userInfo: {
       fontSize: 14,
       color: isDarkMode ? "#cccccc" : "#666666",
@@ -355,10 +360,11 @@ export default function AdminPanel({ onClose }) {
 
   const renderPendingUserItem = (user) => (
     <View key={user.id} style={dynamicStyles.userCard}>
-      <Text style={dynamicStyles.userName}>{user.nombre}</Text>
-      <Text style={dynamicStyles.userTelefono}>{user.telefono}</Text>
-      <Text style={dynamicStyles.userEmail}>{user.email}</Text>
+      <Text style={dynamicStyles.userName}>Nombre: {user.nombre}</Text>
+      <Text style={dynamicStyles.userTelefono}>Telefono: {user.telefono}</Text>
+      <Text style={dynamicStyles.userEmail}>Email: {user.email}</Text>
       <Text style={dynamicStyles.userInfo}>Moto: {user.moto || 'No especificada'}</Text>
+      <Text style={dynamicStyles.userInfo}>Color:  {user.color}</Text>
       <Text style={dynamicStyles.userDate}>
         Registrado: {formatDate(user.created_at)}
       </Text>
