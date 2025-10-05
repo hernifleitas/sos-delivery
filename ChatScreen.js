@@ -7,6 +7,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const [message, setMessage] = useState('');
+  
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const listRef = useRef(null);
@@ -311,7 +312,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
             onSubmitEditing={send}
             returnKeyType="send"
           />
-          <TouchableOpacity style={[styles.sendBtn, (!isPremium && !isAdmin) && { opacity: 0.5 }]} onPress={send} disabled={!isPremium && !isAdmin}>
+          <TouchableOpacity style={[styles.sendBtn, (!isPremium && !isAdmin) && { opacity: 0.5 }]} onPress={send}>
             <Text style={styles.sendText}>Enviar</Text>
           </TouchableOpacity>
         </View>
@@ -321,7 +322,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
             <View style={styles.premiumCard}>
               <Text style={styles.premiumTitle}>Función Premium</Text>
               <Text style={styles.premiumText}>
-                Para chatear con otros riders necesitás la versión Premium. Podrás enviar y recibir mensajes en tiempo real.ngeText={setMessage}
+                Para chatear con otros riders necesitás la versión Premium. Podrás enviar y recibir mensajes en tiempo real.
               </Text>
               <TouchableOpacity style={styles.premiumBtn} onPress={onUpgrade}>
                 <Text style={styles.premiumBtnText}>Mejorar a Premium</Text>

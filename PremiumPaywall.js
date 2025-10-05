@@ -1,6 +1,6 @@
 // PremiumPaywall.js
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, useColorScheme, Linking, Alert } from 'react-native';
 
 export default function PremiumPaywall({ visible, onClose, onSubscribe }) {
   const colorScheme = useColorScheme();
@@ -41,7 +41,19 @@ export default function PremiumPaywall({ visible, onClose, onSubscribe }) {
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={onClose}>
               <Text style={styles.btnTextSecondary}>Más tarde</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onSubscribe}>
+            <TouchableOpacity 
+              style={[styles.btn, styles.btnPrimary]} 
+              onPress={async () => {
+                try {
+                  if (onSubscribe) {
+                    await onSubscribe();
+                  }
+                } catch (error) {
+                  console.error('Error al abrir página de pago:', error);
+                  Alert.alert('Error', 'No se pudo abrir la página de pago');
+                }
+              }}
+            >
               <Text style={styles.btnTextPrimary}>Mejorar a Premium</Text>
             </TouchableOpacity>
           </View>

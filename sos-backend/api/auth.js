@@ -634,11 +634,45 @@ router.post('/login', async (req, res) => {
 });
 
 // Ruta para verificar token
-router.get('/verify', authService.authenticateToken.bind(authService), (req, res) => {
-  res.json({
-    success: true,
-    user: req.user
-  });
+router.get('/verify', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    // Obtener datos actualizados del usuario desde la base de datos
+    const database = require('../database');
+    const userResult = await database.pool.query(
+      'SELECT id, nombre, email, moto, color, role, telefono, created_at, premium_expires_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        nombre: user.nombre,
+        email: user.email,
+        moto: user.moto,
+        color: user.color,
+        role: user.role, // Este es el role actualizado desde la DB
+        telefono: user.telefono,
+        created_at: user.created_at,
+        premium_expires_at: user.premium_expires_at
+      }
+    });
+  } catch (error) {
+    console.error('Error en /verify:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
 });
 
 // Ruta para actualizar perfil
@@ -776,4 +810,30 @@ router.post('/admin/reject-user/:userId', authService.authenticateToken.bind(aut
     });
   }
 });
+
+router.post('/activate', async (req, res) => {
+  try {
+    const { userId, paymentId } = req.body;
+
+    if (!userId || !paymentId) {
+      return res.status(400).json({ error: 'Faltan datos (userId o paymentId)' });
+    }
+
+    // verificar que ese pago exista y esté aprobado
+    const pago = await database.findPaymentById(paymentId, userId);
+
+    if (!pago || pago.status !== 'approved') {
+      return res.status(400).json({ error: 'Pago no encontrado o no aprobado' });
+    }
+
+    // activar la suscripción premium
+    await database.activatePremiumSubscription(userId, paymentId);
+
+    res.json({ success: true, message: 'Premium activado con éxito' });
+  } catch (error) {
+    console.error('Error activando suscripción premium:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
 module.exports = {router, authService}
