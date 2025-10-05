@@ -31,37 +31,30 @@ class Database {
     const client = await this.pool.connect();
     try {
       await client.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          nombre TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          moto TEXT NOT NULL,
-          color TEXT NOT NULL,
-          telefono TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW(),
-          is_active BOOLEAN DEFAULT TRUE,
-          status TEXT DEFAULT 'pending',
-          reset_token TEXT,
-          reset_token_expires TIMESTAMP,
-          role TEXT DEFAULT 'user',
-          premium_expires_at TIMESTAMP
-        );
+        CREATE TABLE IF NOT EXISTS premium_subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  end_date TIMESTAMP NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Asegúrate de que no haya duplicados activos
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_active_subscription 
+ON premium_subscriptions(user_id) 
+WHERE is_active = true;
       `);
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS premium_subscriptions (
           id SERIAL PRIMARY KEY,
           user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-          mercadopago_payment_id VARCHAR(255) UNIQUE,
-          amount DECIMAL(10,2) NOT NULL DEFAULT 5000.00,
-          currency VARCHAR(3) DEFAULT 'ARS',
-          status VARCHAR(50) DEFAULT 'pending',
-          payment_method VARCHAR(100),
-          start_date TIMESTAMP,
-          end_date TIMESTAMP,
-          is_active BOOLEAN DEFAULT FALSE,
+          start_date TIMESTAMP NOT NULL DEFAULT NOW(),
+          end_date TIMESTAMP NOT NULL,
+          is_active BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW()
         );
@@ -89,7 +82,23 @@ class Database {
         );
       `);
 
-      // Trigger para updated_at en device_tokens
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          preference_id TEXT NOT NULL,
+          amount DECIMAL(10, 2) NOT NULL,
+          currency VARCHAR(3) NOT NULL,
+          subscription_id INTEGER REFERENCES premium_subscriptions(id) ON DELETE SET NULL,
+          status VARCHAR(20) DEFAULT 'pending',
+          payment_method_id TEXT,
+          payment_type_id TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW(),
+          UNIQUE(preference_id)
+        );
+      `);
+
       await client.query(`
         CREATE OR REPLACE FUNCTION set_updated_at()
         RETURNS TRIGGER AS $$
@@ -99,6 +108,21 @@ class Database {
         END;
         $$ LANGUAGE plpgsql;
       `);
+      // Crear triggers para updated_at
+      const triggers = [
+        { table: 'device_tokens', name: 'device_tokens_set_updated_at' },
+        { table: 'payments', name: 'payments_set_updated_at' }
+      ];
+
+      for (const trigger of triggers) {
+        await client.query(`
+          DROP TRIGGER IF EXISTS ${trigger.name} ON ${trigger.table};
+          CREATE TRIGGER ${trigger.name}
+          BEFORE UPDATE ON ${trigger.table}
+          FOR EACH ROW
+          EXECUTE FUNCTION set_updated_at();
+        `);
+      }
 
       await client.query(`
         DO $$ BEGIN
@@ -120,13 +144,13 @@ class Database {
   // =================== MÉTODOS USUARIOS ===================
   createUser(userData) {
     return (async () => {
-      const { nombre, email, password, moto, color, telefono } = userData;
+      const { nombre, email, password, moto, color } = userData;
       const sql = `
-        INSERT INTO users (nombre, email, password, moto, color,telefono)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, nombre, email, moto, color, telefono, created_at
+        INSERT INTO users (nombre, email, password, moto, color)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, nombre, email, moto, color, created_at
       `;
-      const { rows } = await this.pool.query(sql, [nombre, email, password, moto, color, telefono]);
+      const { rows } = await this.pool.query(sql, [nombre, email, password, moto, color]);
       return rows[0];
     })();
   }
@@ -179,9 +203,20 @@ class Database {
     })();
   }
 
+  getAllUsers() {
+    return (async () => {
+      const { rows } = await this.pool.query(`
+        SELECT id, nombre, email, moto, color, created_at, status, role, premium_expires_at
+        FROM users
+        WHERE is_active = TRUE
+      `);
+      return rows;
+    })();
+  }
+
   getPendingUsers() {
     return (async () => {
-      const { rows } = await this.pool.query("SELECT id, nombre, email, moto, color, telefono, created_at FROM users WHERE status = 'pending' AND is_active = TRUE");
+      const { rows } = await this.pool.query("SELECT id, nombre, email, moto, color, created_at FROM users WHERE status = 'pending' AND is_active = TRUE");
       return rows;
     })();
   }
@@ -231,47 +266,151 @@ class Database {
     })();
   }
 
-  isAdmin(userId) {
-    return (async () => {
-      const { rows } = await this.pool.query(
-        'SELECT role FROM users WHERE id = $1 AND is_active = TRUE',
-        [userId]
-      );
-      return rows.length > 0 && rows[0].role === 'admin';
-    })();
-  }
 
-  async createPremiumSubscription(userId, mercadopagoData){
+  async makePremium(userId, months = 1) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
   
-      const {rows} = await client.query(`
-        INSERT INTO premium_subscriptions (
-          user_id,
-          mercadopago_payment_id,
-          mercadopago_preference_id,
-          amount,
-          currency,
-          status
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, created_at
-      `,
-      [
-        userId,
-        mercadopagoData.payment_id || null,
-        mercadopagoData.preference_id || null,
-        mercadopagoData.amount || 5000.00,
-        mercadopagoData.currency || 'ARS',
-        'pending'
-      ]);
+      // Calcular fecha de expiración
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + months);
+  
+      // 1. Actualizar el usuario
+      await client.query(`
+        UPDATE users 
+        SET 
+          role = 'premium',
+          is_premium = true,
+          premium_expires_at = $1,
+          updated_at = NOW()
+        WHERE id = $2
+      `, [endDate, userId]);
+  
+      // 2. Desactivar suscripciones anteriores
+      await client.query(`
+        UPDATE premium_subscriptions 
+        SET is_active = false, 
+            updated_at = NOW() 
+        WHERE user_id = $1
+      `, [userId]);
+  
+      // 3. Crear nueva suscripción
+      await client.query(`
+        INSERT INTO premium_subscriptions 
+          (user_id, start_date, end_date, is_active)
+        VALUES 
+          ($1, NOW(), $2, true)
+      `, [userId, endDate]);
   
       await client.query('COMMIT');
-      return {success:true, subscription: rows[0]};
-    } catch (error){
+      
+      return { 
+        success: true, 
+        message: 'Usuario actualizado a premium exitosamente',
+        expiresAt: endDate
+      };
+    } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error creando suscripcion premium:', error);
+      console.error('Error en makePremium:', error);
       throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async removePremium(userId) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verificar si el usuario es admin (no se puede quitar premium a un admin)
+      const adminCheck = await client.query(
+        'SELECT role FROM users WHERE id = $1 AND role = $2',
+        [userId, 'admin']
+      );
+
+      if (adminCheck.rows.length > 0) {
+        return { changes: 0, message: 'No se puede quitar premium a un administrador' };
+      }
+
+      // Quitar premium y limpiar fecha de expiración
+      const result = await client.query(
+        `UPDATE users 
+         SET role = 'user', premium_expires_at = NULL, updated_at = NOW() 
+         WHERE id = $1 AND role = 'premium'
+         RETURNING id`,
+        [userId]
+      );
+
+      // Desactivar suscripciones activas
+      await client.query(
+        `UPDATE premium_subscriptions 
+         SET is_active = FALSE, updated_at = NOW() 
+         WHERE user_id = $1 AND is_active = TRUE`,
+        [userId]
+      );
+
+      await client.query('COMMIT');
+      return {
+        changes: result.rowCount,
+        success: result.rowCount > 0,
+        message: result.rowCount > 0 ? 'Premium eliminado correctamente' : 'Usuario no encontrado o no era premium'
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error en removePremium:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async isPremium(userId) {
+    const client = await this.pool.connect();
+    try {
+      // Primero verificamos si el usuario es admin (siempre premium)
+      const adminCheck = await client.query(
+        'SELECT role FROM users WHERE id = $1 AND role = $2 AND is_active = TRUE',
+        [userId, 'admin']
+      );
+
+      if (adminCheck.rows.length > 0) return true;
+
+      // Verificar usuario premium con expiración
+      const { rows } = await client.query(
+        `SELECT role, premium_expires_at FROM users 
+         WHERE id = $1 AND is_active = TRUE`,
+        [userId]
+      );
+
+      if (rows.length === 0) return false;
+
+      const user = rows[0];
+
+      // Si no es premium, retornar falso
+      if (user.role !== 'premium') return false;
+
+      // Si no tiene fecha de expiración, asumir premium permanente
+      if (!user.premium_expires_at) return true;
+
+      // Verificar si la suscripción ha expirado
+      const now = new Date();
+      const expiresAt = new Date(user.premium_expires_at);
+
+      if (now > expiresAt) {
+        // Si expiró, actualizar el rol a 'user'
+        await client.query(
+          'UPDATE users SET role = $1, premium_expires_at = NULL, updated_at = NOW() WHERE id = $2',
+          ['user', userId]
+        );
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error en isPremium:', error);
+      return false;
     } finally {
       client.release();
     }
@@ -281,113 +420,125 @@ class Database {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-  
-      const subscriptionResult = await client.query(
-        'SELECT * FROM premium_subscriptions WHERE mercadopago_payment_id = $1',
-        [paymentId]
+      const paymentResult = await client.query(
+        `SELECT * FROM payments 
+         WHERE (id = $1 OR payment_id = $2) 
+         AND status = $3`,
+        [parseInt(paymentId, 10), String(paymentId), 'pending']
       );
   
-      if(subscriptionResult.rows.length === 0){
-        throw new Error('No se encontro la suscripcion');
+      if (paymentResult.rows.length === 0) {
+        throw new Error('Pago no encontrado o ya procesado');
       }
   
-      const subscription = subscriptionResult.rows[0];
+      const payment = paymentResult.rows[0];
+      const userId = payment.user_id;
+  
+
+      // 2. Calcular fechas de inicio y fin
       const startDate = new Date();
       const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 30);
-  
-      // Actualizar suscripción
-      await client.query(`
-        UPDATE premium_subscriptions
-        SET status = $1,
-            payment_method = $2,
-            mercadopago_preference_id = $3,
-            start_date = $4,
-            end_date = $5,
-            is_active = TRUE,
-            updated_at = NOW()
-        WHERE mercadopago_payment_id = $6
-      `, [
-        'approved',
-        paymentData.payment_method || 'mercadopago',
-        paymentData.preference_id || null,
-        startDate,
-        endDate,
-        paymentId
-      ]);
-      // Actualizar usuario
-      await client.query(`
-        UPDATE users
-        SET role = $1,
-            premium_expires_at = $2,
-            updated_at = NOW()
-        WHERE id = $3
-      `, ['premium', endDate, subscription.user_id]);
-  
+      endDate.setMonth(endDate.getMonth() + 1); // 1 mes de suscripción
+
+      // 3. Crear la suscripción premium
+      const subscriptionResult = await client.query(
+        `INSERT INTO premium_subscriptions 
+         (user_id, start_date, end_date, is_active, payment_id)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, end_date`,
+        [userId, startDate, endDate, true, paymentId]
+      );
+
+      // 4. Actualizar el estado del pago
+      await client.query(
+        `UPDATE payments 
+         SET status = 'completed', 
+             payment_method_id = $1,
+             payment_type_id = $2,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [paymentData.payment_method_id, paymentData.payment_type_id, paymentId]
+      );
+
+      // 5. Actualizar el estado premium del usuario
+      await client.query(
+        `UPDATE users 
+         SET is_premium = true, 
+             premium_expires_at = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [endDate, userId]
+      );
+
       await client.query('COMMIT');
-      return {success:true, endDate, userId: subscription.user_id};
-  
+      return {
+        success: true,
+        endDate: endDate.toISOString()
+      };
+
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error activando suscripcion premium:', error);
+      console.error('Error en activatePremiumSubscription:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getUserSubscriptions(userId) {
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT ps.*, p.amount, p.currency, p.status as payment_status, p.created_at as payment_date
+         FROM premium_subscriptions ps
+         LEFT JOIN payments p ON p.id = ps.payment_id
+         WHERE ps.user_id = $1
+         ORDER BY ps.start_date DESC`,
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      console.error('Error en getUserSubscriptions:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async savePaymentDetails(paymentData) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+  
+      const { user_id, preference_id, amount, currency, subscription_id, payment_id } = paymentData;
+  
+      const result = await client.query(
+        `INSERT INTO payments (
+          user_id, 
+          preference_id, 
+          amount, 
+          currency, 
+          subscription_id,
+          status,
+          payment_id,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW(), NOW())
+        RETURNING id`,
+        [user_id, preference_id, amount, currency, subscription_id, payment_id]
+      );
+  
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error en savePaymentDetails:', error);
       throw error;
     } finally {
       client.release();
     }
   }
   
-  async isPremiumActive(userId) { 
-    try {
-      // Verificar si es admin
-      const adminCheck = await this.pool.query(
-        'SELECT role FROM users WHERE id = $1 AND role = $2 AND is_active = TRUE',
-        [userId, 'admin']
-      );
-      if (adminCheck.rows.length > 0) return {isPremium:true, type: 'admin'};
-  
-      // Verificar suscripción activa
-      const {rows} = await this.pool.query(`
-        SELECT ps.*, u.role, u.premium_expires_at
-        FROM premium_subscriptions ps
-        JOIN users u ON ps.user_id = u.id
-        WHERE ps.user_id = $1
-          AND ps.is_active = TRUE
-          AND ps.status = 'approved'
-          AND ps.end_date > NOW()
-        ORDER BY ps.end_date DESC
-        LIMIT 1
-      `, [userId]);
-  
-      if(rows.length > 0){
-        return {
-          isPremium:true,
-          type: 'premium',
-          expiresAt: rows[0].end_date,
-          subscription: rows[0]
-        };
-      }
-      return {isPremium:false, type: 'user'};
-  
-    } catch (error) {
-      console.error('Error verificando premium:', error);
-      return {isPremium:false, type: 'user', error: error.message};
-    }
-  }
-    
-  //obtener historial de suscripciones de un usuario 
-
-  async getUserSubscriptions(userId){
-    try {
-      const {rows} = await this.pool.query (`
-        SELECT * FROM premium_subscriptions
-        WHERE user_id =$1
-        ORDER BY created_at DESC`, [userId]);
-        return rows;
-    }catch(error){
-      console.error('Error obteniendo suscripciones', error);
-      throw error;
-    }
-  }
 
   // =================== CHAT ===================
   addMessage(userId, content, room = 'global') {

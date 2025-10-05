@@ -19,7 +19,7 @@ import PremiumPaywall from "./PremiumPaywall";
 import ChatScreen from "./ChatScreen";
 import { getBackendURL } from "./config";
 import { registerForPushNotificationsAsync, sendPushTokenToBackend } from "./services/NotificationsService";
-
+import * as WebBrowser from 'expo-web-browser';
 const BACKEND_URL = getBackendURL();
 
 // Pantalla: Olvidé mi contraseña
@@ -223,8 +223,10 @@ export default function App() {
                 await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
               } else if (response.data?.user) {
                 const merged = { ...(userInfo || {}), ...(response.data.user || {}) };
+                console.log('🔄 Usuario actualizado desde /verify:', merged);
                 setUser(merged);
                 const premiumNow = (merged?.role === 'premium' || merged?.role === 'admin');
+                console.log('🎯 Actualizando isPremium a:', premiumNow, 'role:', merged?.role);
                 setIsPremium(premiumNow);
                 try { await AsyncStorage.setItem('usuario', JSON.stringify(merged)); } catch {}
               }
@@ -822,7 +824,14 @@ export default function App() {
         onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }}
         onOpenChat={() => {
           setShowMainMenu(false);
-          if (!isPremium && !isAdmin) { setShowPremiumPaywall(true); } else { setShowChat(true); }
+          console.log('🔍 DEBUG Chat - isPremium:', isPremium, 'isAdmin:', isAdmin, 'user.role:', user?.role);
+          if (!isPremium && !isAdmin) { 
+            console.log('❌ No es premium ni admin, mostrando paywall');
+            setShowPremiumPaywall(true); 
+          } else { 
+            console.log('✅ Es premium o admin, abriendo chat');
+            setShowChat(true); 
+          }
         }}
         isRepartiendo={isPremium} 
         onToggleRepartiendo={toggleRepartiendo}
@@ -834,10 +843,26 @@ export default function App() {
       <PremiumPaywall
         visible={showPremiumPaywall}
         onClose={() => setShowPremiumPaywall(false)}
-        onSubscribe={() => {
-          setShowPremiumPaywall(false);
-          // TODO: abrir flujo de suscripción (Stripe/IAP)
-          Alert.alert('Próximamente', 'El flujo de suscripción Premium estará disponible pronto.');
+        onSubscribe={async () => {
+          try {
+            // Obtener el token del usuario
+            const token = await AsyncStorage.getItem('authToken');
+            
+            // Construir URL con el token como parámetro
+            const baseUrl = 'http://192.168.1.51:3000/premium';
+            const paymentUrl = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
+            
+            const supported = await Linking.canOpenURL(paymentUrl);
+            if (supported) {
+              await Linking.openURL(paymentUrl);
+              setShowPremiumPaywall(false);
+            } else {
+              Alert.alert('Error', 'No se pudo abrir el enlace de pago');
+            }
+          } catch (error) {
+            console.error('Error abriendo página de pago:', error);
+            Alert.alert('Error', 'No se pudo abrir la página de pago');
+          }
         }}
       />
 
@@ -856,9 +881,26 @@ export default function App() {
             isPremium={isPremium}
             isAdmin={isAdmin}
             currentUserId={user?.id}
-            onUpgrade={() => {
-              setShowChat(false);
-              setShowPremiumPaywall(true);
+            onUpgrade={async () => {
+              try {
+                // Obtener el token del usuario
+                const token = await AsyncStorage.getItem('authToken');
+                
+                // Construir URL con el token como parámetro
+                const baseUrl = 'http://192.168.1.51:3000/premium';
+                const paymentUrl = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
+                
+                const supported = await Linking.canOpenURL(paymentUrl);
+                if (supported) {
+                  await Linking.openURL(paymentUrl);
+                  setShowChat(false);
+                } else {
+                  Alert.alert('Error', 'No se pudo abrir el enlace de pago');
+                }
+              } catch (error) {
+                console.error('Error abriendo página de pago:', error);
+                Alert.alert('Error', 'No se pudo abrir la página de pago');
+              }
             }}
           />
 

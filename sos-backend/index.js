@@ -20,11 +20,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors());
 
 //middleware de debugging 
-
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
-  next();
-})
+//app.use((req, res, next) => {
+ // console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
+  //next();
+//})
 
 // Servir archivos estáticos de premium
 app.use('/premium', express.static(path.join(__dirname, 'public/premium')));
@@ -32,6 +31,19 @@ app.use('/premium', express.static(path.join(__dirname, 'public/premium')));
 // Ruta principal para index.html de premium
 app.get('/premium', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/premium/index.html'));
+});
+
+// Rutas de retorno de MercadoPago
+app.get('/premium/success', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/premium/success.html'));
+});
+
+app.get('/premium/failure', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/premium/failure.html'));
+});
+
+app.get('/premium/pending', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/premium/pending.html'));
 });
 
 // Guardar info de riders en memoria
@@ -322,12 +334,6 @@ app.get("/alertas", (req, res) => {
 
 // Configuración de rutas API
 const API_PREFIX = '/api';
-
-console.log('chatRoutes', chatRoutes)
-console.log('authRoutes:', authRoutes);
-console.log('notificationsRoutes:', notificationsRoutes);
-console.log('premiumRoutes:', premiumRoutes);
-
 // Rutas de autenticación (sin prefijo para compatibilidad)
 app.use('/auth', authRoutes);
 
@@ -339,10 +345,6 @@ app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 // Rutas de premium
 app.use(`${API_PREFIX}/premium`, premiumRoutes);
 
-//debug
-console.log('Rutas auth:', authRoutes.stack
-  .filter(r => r.route)
-  .map(r => r.route.path));
 // Middleware para verificar autenticación en rutas protegidas
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
