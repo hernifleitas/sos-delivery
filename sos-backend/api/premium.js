@@ -91,7 +91,7 @@ router.post('/activate/:paymentId', authenticateToken, async (req, res) => {
     }
 
     // Activar suscripción en la DB
-    const result = await database.activatePremiumSubscription(payment.metadata.userId, {
+    const result = await database.activatePremiumSubscription(payment.id, {
       payment_method_id: payment.payment_type_id,
       payment_type_id: payment.payment_type_id,
       payment_id: payment.id,
@@ -99,12 +99,13 @@ router.post('/activate/:paymentId', authenticateToken, async (req, res) => {
       currency: payment.currency_id,
       status: 'approved',
       approved_at: payment.date_approved
-    });
+    })
 
     res.json({
       success: true,
-      message: 'Suscripción activada con éxito',
-      expiresAt: result.endDate
+      message: 'Premium activado correctamente',
+      status: 'Activado',
+      valid_until: result.endDate
     });
 
   } catch (error) {
@@ -117,106 +118,164 @@ router.post('/activate/:paymentId', authenticateToken, async (req, res) => {
 router.post('/create-subscription', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const amount = 50;
+    const currency = 'ARS';
 
-    // 1️⃣ Crear objeto preference para Checkout Pro
+    // 1️⃣ Crear preferencia de pago en MercadoPago
     const preference = {
-      items: [
-        { title: "Premium SOS", quantity: 1, unit_price: 5000 }
-      ],
-      back_urls: {
-        success: `https://sos-backend-8cpa.onrender.com/premium/success`,
-        failure: `https://sos-backend-8cpa.onrender.com/premium/failure`,
-        pending: `https://sos-backend-8cpa.onrender.com/premium/pending`
+      items: [{
+        title: 'Suscripción Premium SOS Delivery',
+        quantity: 1,
+        currency_id: currency,
+        unit_price: amount
+      }],
+      payer: {
+        name: req.user.nombre,
+        email: req.user.email
       },
-      notification_url: `https://sos-backend-8cpa.onrender.com/premium/webhook`,
-      auto_return: "approved",
-      metadata: { userId }
+      metadata: {
+        user_id: userId
+      },
+      back_urls: {
+        success: `${process.env.FRONTEND_URL}/premium/success`,
+        failure: `${process.env.FRONTEND_URL}/premium/failure`,
+        pending: `${process.env.FRONTEND_URL}/premium/pending`
+      },
+      auto_return: 'approved',
+      notification_url: `${process.env.BACKEND_URL}/api/premium/webhook`
     };
 
-    // 2️⃣ Llamar a la API de MercadoPago
-    const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST",
+    const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`
       },
       body: JSON.stringify(preference)
     });
 
     const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Error al crear preferencia de pago');
 
-    if (!response.ok) {
-      console.error("Error creando preferencia MP:", data);
-      return res.status(500).json({ success: false, message: 'Error creando preferencia de pago' });
-    }
-
-    // 3️⃣ Guardar pago pendiente en DB
-
+    // 2️⃣ Guardar pago pendiente en la base de datos
     await database.savePaymentDetails({
       user_id: userId,
-      payment_method: 'mercadopago',
-      preference_id: data.id, 
-      amount: 5000,
-      currency: 'ARS',
-      subscription_id: null,
-      payment_id: null, 
+      preference_id: data.id,
+      amount: amount,
+      currency: currency,
       status: 'pending'
+      // No incluimos mercadopago_payment_id porque aún no existe
     });
-    
 
-    // 4️⃣ Devolver init_point al frontend
-    res.json({ success: true, init_point: data.init_point, preferenceId: data.id });
+    // 3️⃣ Devolver la URL de pago
+    res.json({
+      success: true,
+      preferenceId: data.id,
+      init_point: data.init_point || null
+    });
 
   } catch (error) {
-    console.error("Error en create-subscription:", error);
-    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+    console.error('Error en create-subscription:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error al crear la suscripción',
+      error: error.message 
+    });
   }
 });
 
 // Webhook de MercadoPago
-router.post('/webhook', express.json(), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   try {
-    const data = req.body.data || req.query;
-    const paymentId = data.id || data['data.id'] || req.query.id;
-
-    if (!paymentId) {
-      console.error("❌ No llegó paymentId en webhook");
-      return res.status(400).json({ success: false, message: "Falta paymentId" });
-    }
-
-    // Llamada a Mercado Pago para obtener info del pago
-    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
-    });
-    const payment = await response.json();
-    console.log("✅ Detalles del pago:", payment);
-
-    if (payment.status === 'approved') {
-      const userId = payment.metadata?.userId;
-      const preferenceId = payment.metadata?.preference_id;
-      if (!userId || !preferenceId) return res.status(400).json({ success: false, message: "Falta userId o preferenceId" });
-
-      const pendingPayment = await database.findPendingPaymentByPreference(preferenceId, userId);
-      if (!pendingPayment) return res.status(404).json({ success: false, message: "Pago pendiente no encontrado" });  
-
-      // Activar suscripción
-      const result = await database.activatePremiumSubscription(pendingPayment.id, {
-        payment_method: payment.payment_type_id,
-        payment_type_id: payment.payment_type_id,
-        payment_id: payment.id,
-        amount: payment.transaction_amount,
-        currency: payment.currency_id,
-        status: payment.status,
-        approved_at: payment.date_approved
+    console.log('[WEBHOOK] Datos recibidos:', JSON.stringify(req.body, null, 2));
+    
+    if (req.body.type === 'payment' && req.body.data?.id) {
+      const paymentId = req.body.data.id;
+      console.log(`[WEBHOOK] Procesando pago ID: ${paymentId}`);
+      
+      // 1. Obtener detalles del pago
+      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { 'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}` }
       });
+      
+      if (!response.ok) {
+        throw new Error(`Error al obtener detalles del pago: ${response.status}`);
+      }
+      
+      const paymentData = await response.json();
+      console.log('[WEBHOOK] Detalles del pago recibidos');
 
-      console.log(`⭐ Usuario ${userId} activado como PREMIUM hasta ${result.endDate}`);
+      // 2. Obtener user_id de los metadatos del pago
+      const userId = paymentData.metadata?.user_id;
+      if (!userId) {
+        throw new Error('No se encontró user_id en los metadatos del pago');
+      }
+
+      // 3. Verificar si el pago ya fue procesado
+      const existingPayment = await database.pool.query(
+        'SELECT id, status FROM payments WHERE mercadopago_payment_id = $1',
+        [paymentId.toString()]
+      );
+
+      if (existingPayment.rows.length > 0 && existingPayment.rows[0].status === 'approved') {
+        console.log(`[WEBHOOK] Pago ${paymentId} ya fue procesado anteriormente`);
+        return res.status(200).send('OK');
+      }
+
+      // 4. Guardar el pago en la base de datos
+      const paymentDetails = {
+        user_id: userId,
+        preference_id: paymentData.order?.id || paymentData.metadata?.preference_id || 'unknown',
+        mercadopago_payment_id: paymentId.toString(),
+        amount: paymentData.transaction_amount,
+        currency: paymentData.currency_id,
+        status: paymentData.status,
+        payment_method_id: paymentData.payment_method_id,
+        payment_type_id: paymentData.payment_type_id,
+        created_at: new Date(paymentData.date_created).toISOString(),
+        updated_at: new Date(paymentData.date_last_updated).toISOString()
+      };
+
+      console.log('[WEBHOOK] Guardando detalles del pago:', paymentDetails);
+      await database.savePaymentDetails(paymentDetails);
+
+      // 5. Si el pago está aprobado, activar la suscripción
+      if (paymentData.status === 'approved') {
+        console.log(`[WEBHOOK] Activando suscripción para usuario ${userId}`);
+        
+        // Crear objeto con los datos necesarios para la suscripción
+        const subscriptionData = {
+          status: paymentData.status,
+          payment_method_id: paymentData.payment_method_id,
+          payment_type_id: paymentData.payment_type_id,
+          payment_id: paymentId.toString(),
+          amount: paymentData.transaction_amount,
+          currency: paymentData.currency_id,
+          approved_at: new Date(paymentData.date_approved).toISOString()
+        };
+
+        console.log('[WEBHOOK] Datos para activar suscripción:', subscriptionData);
+        
+        // Primero guardar el pago si no existe
+        const paymentSaveResult = await database.savePaymentDetails(paymentDetails);
+        console.log('[WEBHOOK] Resultado de guardar pago:', paymentSaveResult);
+        
+        // Luego activar la suscripción
+        await database.activatePremiumSubscription(paymentId.toString(), subscriptionData);
+        console.log('[WEBHOOK] Suscripción activada exitosamente');
+      }
+
+      console.log(`[WEBHOOK] Procesamiento completado para pago ${paymentId}`);
     }
-
-    res.status(200).json({ success: true });
+    
+    res.status(200).send('OK');
   } catch (error) {
-    console.error("❌ Error en webhook:", error);
-    res.status(500).json({ success: false });
+    console.error('[WEBHOOK] Error:', error);
+    res.status(500).json({ 
+      error: 'Error procesando el webhook',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -224,31 +283,80 @@ router.post('/webhook', express.json(), async (req, res) => {
 router.post('/activate-manual', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Crear suscripción manual por 30 días
-    const result = await database.activatePremiumSubscription(userId, {
-      payment_method: 'manual',
-      preference_id: 'MANUAL-' + Date.now(),
-      payment_id: 'MANUAL-PAYMENT-' + Date.now(),
-      amount: 5000,
-      currency: 'ARS',
-      status: 'approved',
-      approved_at: new Date().toISOString()
-    });
+    const { months = 1 } = req.body; // Opcional: meses de suscripción
 
-    console.log(`✅ Usuario ${userId} activado como PREMIUM manualmente hasta ${result.endDate}`);
+    // Calcular fechas
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + months);
 
-    res.json({
-      success: true,
-      message: '¡Premium activado manualmente!',
-      expiresAt: result.endDate,
-      isPremium: true
-    });
+    const client = await database.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Actualizar usuario a premium
+      await client.query(`
+        UPDATE users 
+        SET role = 'premium',
+            is_premium = true,
+            premium_expires_at = $1,
+            updated_at = NOW()
+        WHERE id = $2
+      `, [endDate, userId]);
+
+      // 2. Crear registro de pago simulado
+      const paymentResult = await client.query(`
+        INSERT INTO payments (
+          user_id, 
+          preference_id, 
+          payment_id,
+          amount,
+          currency,
+          status,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+        RETURNING id
+      `, [
+        userId,
+        'MANUAL-' + Date.now(),
+        'MANUAL-PAY-' + Date.now(),
+        5000,
+        'ARS',
+        'approved'
+      ]);
+
+      // 3. Crear suscripción
+      await client.query(`
+        INSERT INTO premium_subscriptions (
+          user_id, 
+          start_date, 
+          end_date, 
+          is_active,
+          payment_id
+        ) VALUES ($1, $2, $3, true, $4)
+      `, [userId, startDate, endDate, paymentResult.rows[0].id]);
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: '¡Premium activado manualmente!',
+        expiresAt: endDate
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
   } catch (error) {
-    console.error('Error activando premium manual:', error);
+    console.error('Error en activate-manual:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Error interno del servidor'
+      message: 'Error al activar premium'
     });
   }
 });

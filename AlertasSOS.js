@@ -39,7 +39,7 @@ export default function AlertasSOS() {
     fetchAlertas();
     const interval = setInterval(fetchAlertas, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); 
 
   const panResponder = useRef(
     PanResponder.create({

@@ -19,7 +19,6 @@ import PremiumPaywall from "./PremiumPaywall";
 import ChatScreen from "./ChatScreen";
 import { getBackendURL } from "./config";
 import { registerForPushNotificationsAsync, sendPushTokenToBackend } from "./services/NotificationsService";
-import * as WebBrowser from 'expo-web-browser';
 const BACKEND_URL = getBackendURL();
 
 // Pantalla: Olvidé mi contraseña
@@ -223,10 +222,10 @@ export default function App() {
                 await AsyncStorage.multiRemove(['userLoggedIn', 'usuario', 'authToken']);
               } else if (response.data?.user) {
                 const merged = { ...(userInfo || {}), ...(response.data.user || {}) };
-                console.log('🔄 Usuario actualizado desde /verify:', merged);
+             //   console.log('🔄 Usuario actualizado desde /verify:', merged);
                 setUser(merged);
                 const premiumNow = (merged?.role === 'premium' || merged?.role === 'admin');
-                console.log('🎯 Actualizando isPremium a:', premiumNow, 'role:', merged?.role);
+               // console.log('🎯 Actualizando isPremium a:', premiumNow, 'role:', merged?.role);
                 setIsPremium(premiumNow);
                 try { await AsyncStorage.setItem('usuario', JSON.stringify(merged)); } catch {}
               }
@@ -310,7 +309,7 @@ export default function App() {
           if (token) await sendPushTokenToBackend(token);
         }
       } catch (e) {
-        console.warn('No se pudo registrar push token:', e?.message);
+       // console.warn('No se pudo registrar push token:', e?.message);
       }
     })();
   }, [isLoggedIn, user?.id]);
@@ -355,7 +354,7 @@ export default function App() {
         Alert.alert("SOS Activado", `Alerta de ${tipo} activada desde segundo plano`);
       }
     } catch (error) {
-      console.error('Error activando SOS desde background:', error);
+     // console.error('Error activando SOS desde background:', error);
       Alert.alert("Error", "No se pudo activar el SOS");
     }
   };
@@ -417,7 +416,7 @@ export default function App() {
         await AsyncStorage.setItem('sosEnviado', 'true');
       }
     } catch (e) {
-      console.warn('Error enviando SOS:', e?.message);
+      //console.warn('Error enviando SOS:', e?.message);
     }
   };
 
@@ -454,7 +453,7 @@ export default function App() {
       const ptoken = await registerForPushNotificationsAsync();
       if (ptoken) await sendPushTokenToBackend(ptoken);
     } catch (e) {
-      console.warn('No se pudo registrar token push post-login:', e?.message);
+      //console.warn('No se pudo registrar token push post-login:', e?.message);
     }
   };
 
@@ -481,7 +480,7 @@ export default function App() {
       const ptoken = await registerForPushNotificationsAsync();
       if (ptoken) await sendPushTokenToBackend(ptoken);
     } catch (e) {
-      console.warn('No se pudo registrar token push post-registro:', e?.message);
+      //console.warn('No se pudo registrar token push post-registro:', e?.message);
     }
   };
 
@@ -546,7 +545,7 @@ export default function App() {
       // Si obtenemos status 200 y la respuesta tiene datos, es admin
       if (response.status === 200) {
         setIsAdmin(true);
-        console.log("Usuario con rol ADMIN detectado");
+        //console.log("Usuario con rol ADMIN detectado");
       } else {
         setIsAdmin(false);
       }
@@ -555,11 +554,11 @@ export default function App() {
       // Si da 403 significa que no es admin
       if (err.response?.status === 403) {
         setIsAdmin(false);
-        console.log("Usuario NO es admin (403)");
+       // console.log("Usuario NO es admin (403)");
       } else {
         // Otros errores de red o servidor
         setIsAdmin(false);
-        console.error("Error verificando admin:", err.message);
+        //console.error("Error verificando admin:", err.message);
       }
     }
   };
@@ -626,29 +625,44 @@ export default function App() {
   
 
   const cancelarSOS = async () => {
+  try {
+    // Limpiar intervalos y timeouts primero
+    if (timeoutSOS.current) {
+      clearTimeout(timeoutSOS.current);
+      timeoutSOS.current = null;
+    }
+    if (intervaloSOS.current) {
+      clearInterval(intervaloSOS.current);
+      intervaloSOS.current = null;
+    }
+
+    // Actualizar UI y flags
+    setSosActivo(false);
+    setTipoSOS("");
+    setContador(0);
+    
+    // Limpiar datos de AsyncStorage
+    await AsyncStorage.multiRemove([
+      "sosActivo",
+      "sosEnviado",
+      "tipoSOS",
+      "sosInicio"
+    ]);
+
+    // Datos para enviar 'normal'
+    const BACKEND_URL = getBackendURL();
+    const riderId = (await AsyncStorage.getItem("riderId")) || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nombre = (await AsyncStorage.getItem("nombre")) || "Usuario";
+    const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
+    let color = (await AsyncStorage.getItem("color")) || "No especificado";
+    color = color.trim() !== "" ? color : "No especificado";
+    const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
+    const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+    const fechaHora = new Date().toISOString();
+
+    // Forzar envío 'normal' (NO aplicar guardas)
+    const authToken = await AsyncStorage.getItem('authToken');
     try {
-      // Actualizar UI y flags primero
-      setSosActivo(false);
-      setTipoSOS("");
-      setContador(0);
-      await AsyncStorage.setItem("sosActivo", "false");
-      await AsyncStorage.setItem("sosEnviado", "false");
-      await AsyncStorage.removeItem("tipoSOS");
-
-      // Datos para enviar 'normal'
-      const BACKEND_URL = getBackendURL();
-      const riderId = (await AsyncStorage.getItem("riderId")) || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      await AsyncStorage.setItem("riderId", riderId);
-      const nombre = (await AsyncStorage.getItem("nombre")) || "Usuario";
-      const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
-      let color = (await AsyncStorage.getItem("color")) || "No especificado";
-      color = color.trim() !== "" ? color : "No especificado";
-      const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
-      const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-      const fechaHora = new Date().toISOString();
-
-      // Forzar envío 'normal' (NO aplicar guardas)
-      const authToken = await AsyncStorage.getItem('authToken');
       await axios.post(`${BACKEND_URL}/sos`, {
         riderId,
         nombre,
@@ -656,19 +670,32 @@ export default function App() {
         color,
         ubicacion: { lat: ubicacion.lat ?? 0, lng: ubicacion.lng ?? 0 },
         fechaHora,
-        tipo: "normal", // Tipo normal para bandera verde
+        tipo: "normal",
         cancel: true,
       }, {
         timeout: 15000,
-        headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
+        headers: { 
+          "Content-Type": "application/json", 
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) 
+        }
       });
-
-      console.log('SOS cancelado: estado normal enviado');
+      console.log('SOS cancelado: estado normal enviado al servidor');
+      
+      
     } catch (err) {
-      console.error('Error cancelando SOS:', err?.message);
-      Alert.alert('Error', 'No se pudo cancelar el SOS. Revisa tu conexión e intenta nuevamente.');
+      console.warn('Advertencia: No se pudo notificar al servidor sobre la cancelación:', err?.message);
+      // Continuamos a pesar del error para asegurar la limpieza local
     }
-  };
+
+    // Asegurarse de que el estado se actualice en la UI
+    setSosActivo(false);
+    setTipoSOS("");
+    
+  } catch (err) {
+    console.error('Error cancelando SOS:', err?.message);
+    Alert.alert('Error', 'Ocurrió un error al cancelar la alerta. Por favor, inténtalo de nuevo.');
+  }
+};
 
   const handleToggleMapMarkers = async () => {
     try {
@@ -824,12 +851,12 @@ export default function App() {
         onOpenAdmin={() => { setShowMainMenu(false); setShowAdminPanel(true); }}
         onOpenChat={() => {
           setShowMainMenu(false);
-          console.log('🔍 DEBUG Chat - isPremium:', isPremium, 'isAdmin:', isAdmin, 'user.role:', user?.role);
+          //console.log('🔍 DEBUG Chat - isPremium:', isPremium, 'isAdmin:', isAdmin, 'user.role:', user?.role);
           if (!isPremium && !isAdmin) { 
-            console.log('❌ No es premium ni admin, mostrando paywall');
+            //console.log('❌ No es premium ni admin, mostrando paywall');
             setShowPremiumPaywall(true); 
           } else { 
-            console.log('✅ Es premium o admin, abriendo chat');
+            //console.log('✅ Es premium o admin, abriendo chat');
             setShowChat(true); 
           }
         }}
@@ -849,7 +876,7 @@ export default function App() {
             const token = await AsyncStorage.getItem('authToken');
             
             // Construir URL con el token como parámetro
-            const baseUrl = 'http://192.168.1.51:3000/premium';
+            const baseUrl = 'https://sos-backend-8cpa.onrender.com/premium';
             const paymentUrl = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
             
             const supported = await Linking.canOpenURL(paymentUrl);
@@ -857,11 +884,11 @@ export default function App() {
               await Linking.openURL(paymentUrl);
               setShowPremiumPaywall(false);
             } else {
-              Alert.alert('Error', 'No se pudo abrir el enlace de pago');
+              //Alert.alert('Error', 'No se pudo abrir el enlace de pago');
             }
           } catch (error) {
-            console.error('Error abriendo página de pago:', error);
-            Alert.alert('Error', 'No se pudo abrir la página de pago');
+            //console.error('Error abriendo página de pago:', error);
+            //Alert.alert('Error', 'No se pudo abrir la página de pago');
           }
         }}
       />
@@ -887,7 +914,7 @@ export default function App() {
                 const token = await AsyncStorage.getItem('authToken');
                 
                 // Construir URL con el token como parámetro
-                const baseUrl = 'http://192.168.1.51:3000/premium';
+                const baseUrl = 'https://sos-backend-8cpa.onrender.com/premium/';
                 const paymentUrl = token ? `${baseUrl}?token=${encodeURIComponent(token)}` : baseUrl;
                 
                 const supported = await Linking.canOpenURL(paymentUrl);
@@ -895,11 +922,11 @@ export default function App() {
                   await Linking.openURL(paymentUrl);
                   setShowChat(false);
                 } else {
-                  Alert.alert('Error', 'No se pudo abrir el enlace de pago');
+                  //Alert.alert('Error', 'No se pudo abrir el enlace de pago');
                 }
               } catch (error) {
-                console.error('Error abriendo página de pago:', error);
-                Alert.alert('Error', 'No se pudo abrir la página de pago');
+                //console.error('Error abriendo página de pago:', error);
+                //Alert.alert('Error', 'No se pudo abrir la página de pago');
               }
             }}
           />
