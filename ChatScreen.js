@@ -186,7 +186,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       alignItems: 'center',
       paddingHorizontal: 10,
       paddingTop: 10,
-      paddingBottom: Platform.OS === 'android' ? 16 : 12,
+      paddingBottom: Platform.OS === 'android' ? 30 : 40,
       borderTopWidth: 1,
       borderTopColor: isDarkMode ? '#222' : '#eaeaea',
       backgroundColor: isDarkMode ? '#121212' : '#ffffff'
@@ -261,11 +261,11 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'android' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 120}
       >
         <View style={styles.header}>
-          <Text style={styles.title}> ChatRiders</Text>
+          <Text style={styles.title}> Chat Riders</Text>
           <TouchableOpacity style={styles.close} onPress={onClose}>
             <Text style={styles.closeText}> </Text>
           </TouchableOpacity>
@@ -278,7 +278,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
           data={messages}
           inverted={true}
           keyExtractor={(item) => String(item?.id ?? `${item?.user_id || 'u'}-${item?.created_at || Math.random()}`)}
-          renderItem={renderItem}
+          renderItem={renderItem} 
           keyboardShouldPersistTaps="handled"
           refreshing={loading}
           onRefresh={async () => {
