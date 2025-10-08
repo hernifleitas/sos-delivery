@@ -625,77 +625,70 @@ export default function App() {
   
 
   const cancelarSOS = async () => {
-  try {
-    // Limpiar intervalos y timeouts primero
-    if (timeoutSOS.current) {
-      clearTimeout(timeoutSOS.current);
-      timeoutSOS.current = null;
-    }
-    if (intervaloSOS.current) {
-      clearInterval(intervaloSOS.current);
-      intervaloSOS.current = null;
-    }
-
-    // Actualizar UI y flags
-    setSosActivo(false);
-    setTipoSOS("");
-    setContador(0);
-    
-    // Limpiar datos de AsyncStorage
-    await AsyncStorage.multiRemove([
-      "sosActivo",
-      "sosEnviado",
-      "tipoSOS",
-      "sosInicio"
-    ]);
-
-    // Datos para enviar 'normal'
-    const BACKEND_URL = getBackendURL();
-    const riderId = (await AsyncStorage.getItem("riderId")) || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const nombre = (await AsyncStorage.getItem("nombre")) || "Usuario";
-    const moto = (await AsyncStorage.getItem("moto")) || "No especificado";
-    let color = (await AsyncStorage.getItem("color")) || "No especificado";
-    color = color.trim() !== "" ? color : "No especificado";
-    const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
-    const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-    const fechaHora = new Date().toISOString();
-
-    // Forzar envío 'normal' (NO aplicar guardas)
-    const authToken = await AsyncStorage.getItem('authToken');
     try {
-      await axios.post(`${BACKEND_URL}/sos`, {
-        riderId,
-        nombre,
-        moto,
-        color,
-        ubicacion: { lat: ubicacion.lat ?? 0, lng: ubicacion.lng ?? 0 },
-        fechaHora,
-        tipo: "normal",
-        cancel: true,
-      }, {
-        timeout: 15000,
-        headers: { 
-          "Content-Type": "application/json", 
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) 
+      console.log('Iniciando cancelación de SOS...');
+      
+      // Limpiar intervalos y timeouts
+      if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
+      if (intervaloSOS.current) clearInterval(intervaloSOS.current);
+      
+      // Actualizar estado local
+      setSosActivo(false);
+      setTipoSOS("");
+      setContador(0);
+      
+      // Limpiar AsyncStorage
+      await AsyncStorage.multiRemove([
+        "sosActivo",
+        "sosEnviado",
+        "tipoSOS",
+        "sosInicio"
+      ]);
+      console.log('Estado local limpiado');
+  
+      // Obtener datos actualizados
+      const BACKEND_URL = getBackendURL();
+      const riderId = await AsyncStorage.getItem("riderId") || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const nombre = await AsyncStorage.getItem("nombre") || "Usuario";
+      const moto = await AsyncStorage.getItem("moto") || "No especificado";
+      let color = (await AsyncStorage.getItem("color") || "No especificado").trim() || "No especificado";
+      const ubicacionString = await AsyncStorage.getItem("ultimaUbicacion");
+      const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
+  
+      console.log('Enviando cancelación al servidor...');
+      try {
+        const response = await axios.post(
+          `${BACKEND_URL}/sos`,
+          {
+            riderId,
+            nombre,
+            moto,
+            color,
+            ubicacion,
+            fechaHora: new Date().toISOString(),
+            tipo: "normal",
+            cancel: true,
+          },
+          {
+            timeout: 10000,
+            headers: { 
+              "Content-Type": "application/json",
+              ...(await AsyncStorage.getItem('authToken') ? 
+                { Authorization: `Bearer ${await AsyncStorage.getItem('authToken')}` } : {})
+            }
+          }
+        );
+        console.log('Respuesta del servidor:', response.data);
+      } catch (err) {
+       /// console.error('Error al notificar al servidor:', err.message);
+        if (err.response) {
+        //  console.error('Detalles del error:', err.response.data);
         }
-      });
-      console.log('SOS cancelado: estado normal enviado al servidor');
-      
-      
+      }
     } catch (err) {
-      console.warn('Advertencia: No se pudo notificar al servidor sobre la cancelación:', err?.message);
-      // Continuamos a pesar del error para asegurar la limpieza local
+      console.error('Error en cancelarSOS:', err);
     }
-
-    // Asegurarse de que el estado se actualice en la UI
-    setSosActivo(false);
-    setTipoSOS("");
-    
-  } catch (err) {
-    console.error('Error cancelando SOS:', err?.message);
-    Alert.alert('Error', 'Ocurrió un error al cancelar la alerta. Por favor, inténtalo de nuevo.');
-  }
-};
+  };
 
   const handleToggleMapMarkers = async () => {
     try {
