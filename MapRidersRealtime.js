@@ -685,7 +685,7 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
         <Text style={styles.fabText}>☍</Text>
       </TouchableOpacity>
 
-      {userRole === 'premium' || userRole === 'admin' && (
+      {(userRole === 'premium' || userRole === 'admin') && (
         
       <TouchableOpacity
       style={[
