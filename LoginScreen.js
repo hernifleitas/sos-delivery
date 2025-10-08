@@ -247,7 +247,8 @@ export default function LoginScreen({ onLoginSuccess, onNavigate }) {
           nombre: userData.nombre,
           moto: userData.moto,
           color: userData.color,
-          email: userData.email
+          email: userData.email,
+          role: userData.role || 'user'
         }));
         
         await AsyncStorage.setItem("userLoggedIn", "true");

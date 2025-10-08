@@ -38,9 +38,9 @@ class AuthService {
       email: user.email,
       nombre: user.nombre
     };
-    
-    return jwt.sign(payload, this.jwtSecret, { 
-      expiresIn: this.jwtExpiresIn 
+
+    return jwt.sign(payload, this.jwtSecret, {
+      expiresIn: this.jwtExpiresIn
     });
   }
 
@@ -109,7 +109,9 @@ class AuthService {
           created_at: newUser.created_at,
           status: 'pending',
         }
+        
       };
+      
     } catch (error) {
       console.error('Error en registro:', error);
       return {
@@ -170,7 +172,7 @@ class AuthService {
           telefono: user.telefono,
           created_at: user.created_at,
           role: user.role || 'user',
-          
+
         },
         token
       };
@@ -213,7 +215,7 @@ class AuthService {
           telefono: user.telefono,
           created_at: user.created_at,
           role: user.role || 'user',
-    
+
         }
       };
     } catch (error) {
@@ -838,4 +840,4 @@ router.post('/activate', async (req, res) => {
   }
 });
 
-module.exports = {router, authService}
+module.exports = { router, authService }

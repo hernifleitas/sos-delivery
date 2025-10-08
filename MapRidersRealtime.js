@@ -235,11 +235,23 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
   };
 
   const [isRepartiendoLocal, setIsRepartiendoLocal] = useState(false);
+  const [userRole, setUserRole] = useState('user');
 
   useEffect(() => {
     (async () => {
       const cur = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
       setIsRepartiendoLocal(cur);
+      
+      // Cargar datos del usuario
+      const userData = await AsyncStorage.getItem('usuario');
+      if (userData) {
+        const user = JSON.parse(userData);
+        setUserRole(user.role || 'user');
+        // Asegurarse de que myRiderIdRef esté actualizado
+        if (user.id) {
+          myRiderIdRef.current = user.id;
+        }
+      }
     })();
   }, []);
 
@@ -331,15 +343,21 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
   };
 
 
-  // Ocultar SOLO mi marcador cuando "No repartiendo", salvo SOS (robo/accidente)
-const filterSelfWhenNotRepartiendo = (list) => {
-  const myId = myRiderIdRef.current;
-  if (!myId) return list; // si aún no sabemos tu id, no filtramos
-  if (isRepartiendoLocal) return list; // repartiendo ON: no se filtra
-  return list.filter(r =>
-    r.riderId !== myId || (r.riderId === myId && (r.tipo === 'robo' || r.tipo === 'accidente'))
-  );
-};
+  const filterSelfWhenNotRepartiendo = (list) => {
+    const myId = myRiderIdRef.current;
+    if (!myId) return list;
+    
+    // Si es una emergencia (robo/accidente), siempre mostrarlo
+    const filtered = list.filter(rider => {
+      // Mostrar siempre los riders que no son yo
+      if (rider.riderId !== myId) return true;
+      
+      // Mostrar mi marcador si es una emergencia O si estoy repartiendo
+      return rider.tipo === 'robo' || rider.tipo === 'accidente' || isRepartiendoLocal;
+    });
+  
+    return filtered;
+  };
 
   const onRecenterPress = async () => {
     try {
@@ -666,46 +684,50 @@ const filterSelfWhenNotRepartiendo = (list) => {
       <TouchableOpacity style={styles.fabFit} onPress={onFitAllPress} activeOpacity={0.8}>
         <Text style={styles.fabText}>☍</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          styles.fabToggle,
-          { backgroundColor: isRepartiendoLocal ? '#27ae60' : '#7f8c8d' }
-        ]}
-        onPress={async () => {
-          // 1) Alternar UI inmediatamente (optimista)
-          const next = !isRepartiendoLocal;
-          setIsRepartiendoLocal(next);
-          // Actualizar flag global en WebView inmediatamente
-          try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${next}; true;`); } catch (_) {}
 
-          // 2) Ejecutar la lógica real (guarda en storage y, si next es true, envía ubicación)
+      {userRole === 'premium' || userRole === 'admin' && (
+        
+      <TouchableOpacity
+      style={[
+        styles.fabToggle,
+        { backgroundColor: isRepartiendoLocal ? '#27ae60' : '#7f8c8d' }
+      ]}
+      onPress={async () => {
+        // 1) Alternar UI inmediatamente (optimista)
+        const next = !isRepartiendoLocal;
+        setIsRepartiendoLocal(next);
+        // Actualizar flag global en WebView inmediatamente
+        try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${next}; true;`); } catch (_) {}
+
+        // 2) Ejecutar la lógica real (guarda en storage y, si next es true, envía ubicación)
+        try {
+          await toggleRepartiendoLocal();
+          // Si quisieras “confirmar” desde storage, podrías re-leer:
+          // const cur = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
+          // setIsRepartiendoLocal(cur);
+          // 3) Forzar actualización visual inmediata tras el toggle
           try {
-            await toggleRepartiendoLocal();
-            // Si quisieras “confirmar” desde storage, podrías re-leer:
-            // const cur = (await AsyncStorage.getItem('repartiendoActivo')) === 'true';
-            // setIsRepartiendoLocal(cur);
-            // 3) Forzar actualización visual inmediata tras el toggle
-            try {
-              if (webReady && lastRidersRef.current) {
-                const shouldShowMarkers = (showMarkers ?? true);
-                const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
-                const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
-                webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
-              }
-            } catch (_) {}
-          } catch (e) {
-            // En caso de error, revertir UI
-            setIsRepartiendoLocal(!next);
-            // Revertir flag global
-            try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${!next}; true;`); } catch (_) {}
-          }
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.fabText}>
-          {isRepartiendoLocal ? 'Repartiendo' : 'No repartiendo'}
-        </Text>
-      </TouchableOpacity>
+            if (webReady && lastRidersRef.current) {
+              const shouldShowMarkers = (showMarkers ?? true);
+              const listForMap = filterSelfWhenNotRepartiendo(lastRidersRef.current);
+              const payload = shouldShowMarkers ? JSON.stringify(listForMap) : '[]';
+              webviewRef.current?.injectJavaScript(`window.updateRiders(${payload}); true;`);
+            }
+          } catch (_) {}
+        } catch (e) {
+          // En caso de error, revertir UI
+          setIsRepartiendoLocal(!next);
+          // Revertir flag global
+          try { if (webReady) webviewRef.current?.injectJavaScript(`window.isRepartiendo = ${!next}; true;`); } catch (_) {}
+        }
+      }}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.fabText}>
+        {isRepartiendoLocal ? 'Repartiendo' : 'No repartiendo'}
+      </Text>
+    </TouchableOpacity>
+      )}
     </View>
   );
 }

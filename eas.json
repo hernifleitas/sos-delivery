@@ -10,20 +10,21 @@
         "simulator": false
       }
     },
-    "preview": {
-      "distribution": "internal",
+   "preview": {
+  "distribution": "internal",
+  "android": {
+    "buildType": "apk",
+    "gradleCommand": ":app:assembleRelease"
+  },
+  "ios": {
+    "simulator": true
+  }
+},
+    "production": {
+      "distribution": "store",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
-      },
-      "ios": {
-        "simulator": true
-      }
-    },
-    "production": {
-      "android": {
-        "buildType": "app-bundle",
-        "gradleCommand": ":app:bundleRelease"
+        "gradleCommand": ":app:assembleRelease"
       },
       "ios": {
         "simulator": false
