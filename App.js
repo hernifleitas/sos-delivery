@@ -4,7 +4,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, AppState, u
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { iniciarUbicacionBackground, detenerUbicacionBackground, verificarEstadoTracking } from "./tasks";
-import { configurarNotificaciones, manejarCicloVidaApp, enviarNotificacionSOS, activarSOSDesdeNotificacion, limpiarNotificacionesPendientes } from "./backgroundConfig";
+import { configurarNotificaciones, manejarCicloVidaApp, enviarNotificacionSOS, activarSOSDesdeNotificacion, limpiarNotificacionesPendientes, verificarConfiguracionNotificaciones } from "./backgroundConfig";
 import { configurarAccesoRapido, enviarNotificacionConAcciones, manejarRespuestaNotificacion } from "./quickActions";
 import axios from "axios";
 import MapRidersRealtime from "./MapRidersRealtime";
@@ -18,8 +18,11 @@ import MainMenu from "./MainMenu";
 import PremiumPaywall from "./PremiumPaywall";
 import ChatScreen from "./ChatScreen";
 import { getBackendURL } from "./config";
+import * as Location from 'expo-location';
+
 import { registerForPushNotificationsAsync, sendPushTokenToBackend } from "./services/NotificationsService";
 const BACKEND_URL = getBackendURL();
+
 
 // Pantalla: Olvidé mi contraseña
 function ForgotPasswordScreen({ onNavigate }) {
@@ -189,6 +192,17 @@ export default function App() {
 
   useEffect(() => {
 
+    const setupNotifications = async () => {
+      try {
+        await configurarNotificaciones();
+        // Opcional: Verificar si las notificaciones están configuradas
+        const configurado = await verificarConfiguracionNotificaciones();
+        console.log('Notificaciones configuradas:', configurado);
+      } catch (error) {
+        console.error('Error configurando notificaciones:', error);
+      }
+    };
+    setupNotifications();
     const cargarDatos = async () => {
       // Limpiar notificaciones pendientes que puedan causar alertas automáticas
       await limpiarNotificacionesPendientes();
@@ -296,8 +310,16 @@ export default function App() {
 
   // Manejar respuestas de notificaciones
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(manejarRespuestaNotificacion);
-    return () => subscription?.remove();
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const { data } = response.notification.request.content;
+      if (data.chatId) {
+        // Actualizar el estado del chat o forzar una recarga de mensajes
+        setChatId(data.chatId);
+        loadMessages(data.chatId);
+      }
+    });
+  
+    return () => subscription.remove();
   }, []);
 
   // Registro de push tokens cuando el usuario inicia sesión
@@ -375,50 +397,82 @@ export default function App() {
   };
 
   // Enviar ubicación al backend para SOS (inicial y actualizaciones)
-  const enviarUbicacionSOS = async () => {
+  const enviarUbicacionSOS = async (esPrimerEnvio = false) => {
+    console.log('Iniciando envío de ubicación...');
     try {
-      // Cargar últimos datos necesarios
-      const riderIdStored = await AsyncStorage.getItem('riderId');
-      let riderId = riderIdStored || `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      if (!riderIdStored) await AsyncStorage.setItem('riderId', riderId);
-
-      const nombre = (await AsyncStorage.getItem('nombre')) || user?.nombre || 'Usuario';
-      const moto = (await AsyncStorage.getItem('moto')) || user?.moto || 'No especificado';
-      let color = (await AsyncStorage.getItem('color')) || user?.color || 'No especificado';
-      color = (color || '').trim() !== '' ? color : 'No especificado';
-
-      const ubicacionString = await AsyncStorage.getItem('ultimaUbicacion');
-      const ubicacion = ubicacionString ? JSON.parse(ubicacionString) : { lat: 0, lng: 0 };
-      const fechaHora = new Date().toISOString();
-
-      // Determinar si ya se envió el SOS inicial en esta sesión
-      const sosEnviado = await AsyncStorage.getItem('sosEnviado');
-      // IMPORTANTE: leer tipo desde AsyncStorage para evitar condiciones de carrera con setState
-      const tipoSOSAlmacenado = await AsyncStorage.getItem('tipoSOS');
-      const tipo = sosEnviado === 'true' ? 'actualizacion' : (tipoSOSAlmacenado || 'robo');
-
-      const token = await AsyncStorage.getItem('authToken');
-      await axios.post(`${BACKEND_URL}/sos`, {
-        riderId,
-        nombre,
-        moto,
-        color,
-        ubicacion,
-        fechaHora,
-        tipo,
-        tipoSOSActual: tipoSOSAlmacenado || tipo,
-      }, {
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        timeout: 15000,
-      });
-
-      if (sosEnviado !== 'true') {
-        await AsyncStorage.setItem('sosEnviado', 'true');
-      }
-    } catch (e) {
-      //console.warn('Error enviando SOS:', e?.message);
+        console.log('Solicitando ubicación actual...');
+        const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High
+        });
+        console.log('Ubicación obtenida:', location.coords);
+        
+        const { latitude, longitude } = location.coords;
+        
+        if (latitude === 0 && longitude === 0) {
+            console.error('Error: Coordenadas (0,0) no válidas');
+            return false;
+        }
+ 
+        const riderId = await AsyncStorage.getItem('riderId') || `rider-${Date.now()}`;
+        console.log('Datos del usuario:', { riderId });
+ 
+        // Obtener el tipo de SOS actual, si no hay, usar 'repartiendo'
+        const tipoSOSAlmacenado = await AsyncStorage.getItem('tipoSOS') || 'repartiendo';
+        const sosActivo = await AsyncStorage.getItem('sosActivo') === 'true';
+        const tipo = sosActivo ? tipoSOSAlmacenado : 'repartiendo';
+        
+        // Solo marcar como emergencia si es el primer envío de una alerta SOS
+        const esEmergencia = (tipo === 'robo' || tipo === 'accidente') && esPrimerEnvio;
+        
+        console.log('Tipo de alerta:', { 
+            tipoSOSAlmacenado, 
+            sosActivo,
+            tipo,
+            esEmergencia,
+            esPrimerEnvio
+        });
+ 
+        const payload = {
+            riderId,
+            nombre: (await AsyncStorage.getItem('nombre')) || 'Usuario',
+            moto: (await AsyncStorage.getItem('moto')) || 'No especificado',
+            color: ((await AsyncStorage.getItem('color')) || 'No especificado').trim() || 'No especificado',
+            ubicacion: { 
+                lat: latitude,
+                lng: longitude
+            },
+            fechaHora: new Date().toISOString(), 
+            tipo,
+            tipoSOSActual: tipoSOSAlmacenado, 
+            esActualizacion: !esPrimerEnvio,  // true para actualizaciones
+            esEmergencia: esPrimerEnvio && (tipo === 'robo' || tipo === 'accidente')
+        };
+        const token = await AsyncStorage.getItem('authToken');
+        const response = await axios.post(`${BACKEND_URL}/sos` , payload, {
+            headers: { 
+                'Content-Type': 'application/json', 
+                ...(token ? { Authorization: `Bearer ${token}` } : {}) 
+            },
+            timeout: 15000
+        });
+ 
+        console.log('Respuesta del servidor:', response.status, response.data);
+        return true;
+ 
+    } catch (error) {
+        console.error('Error en enviarUbicacionSOS:', {
+            message: error.message,
+            response: error.response?.data,
+            code: error.code,
+            config: {
+                url: error.config?.url,
+                method: error.config?.method,
+                data: error.config?.data
+            }
+        });
+        return false;
     }
-  };
+};
 
   // Funciones de navegación
   const handleNavigate = (screen) => {
@@ -587,43 +641,48 @@ export default function App() {
 
   const activarSOSConfirmado = async (tipo) => {
     if (sosActivo) return;
-    setTipoSOS(tipo);
-    setSosActivo(true);
-    setContador(0);
-    // Generar riderId si no existe
-    let riderId = await AsyncStorage.getItem("riderId");
-    if (!riderId) {
-      riderId = `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      await AsyncStorage.setItem("riderId", riderId);
+    
+    try {
+        // Guardar el estado de la alerta
+        await AsyncStorage.setItem('sosActivo', 'true');
+        await AsyncStorage.setItem('tipoSOS', tipo);
+        setSosActivo(true);
+        setTipoSOS(tipo);
+        
+        // Generar riderId si no existe
+        let riderId = await AsyncStorage.getItem('riderId');
+        if (!riderId) {
+            riderId = `rider-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            await AsyncStorage.setItem('riderId', riderId);
+        }
+
+        // Limpiar cualquier intervalo previo
+        if (intervaloSOS.current) {
+            clearInterval(intervaloSOS.current);
+            intervaloSOS.current = null;
+        }
+
+        // Enviar ubicación inmediatamente (primer envío con notificación)
+        await enviarUbicacionSOS(true);
+        
+        // Configurar intervalo de 30 segundos para actualizaciones (sin notificación)
+        intervaloSOS.current = setInterval(async () => {
+            console.log('Enviando actualización de ubicación...');
+            await enviarUbicacionSOS(false); // No es el primer envío
+        }, 30000); // 30 segundos
+
+        // Asegurar que el seguimiento en segundo plano esté activo
+        try { 
+            await iniciarUbicacionBackground(); 
+        } catch (error) {
+            console.error('Error al iniciar seguimiento en segundo plano:', error);
+        }
+
+    } catch (error) {
+        console.error('Error al activar alerta SOS:', error);
+        Alert.alert('Error', 'No se pudo activar la alerta. Intenta nuevamente.');
     }
-
-    // Guardar todos los datos del usuario
-    await AsyncStorage.setItem("sosActivo", "true");
-    await AsyncStorage.setItem("sosInicio", Date.now().toString());
-    await AsyncStorage.setItem("sosEnviado", "false");
-    await AsyncStorage.setItem("sosConfirmado", "true");
-    await AsyncStorage.setItem("nombre", user?.nombre || "Usuario");
-    await AsyncStorage.setItem("moto", user?.moto || "No especificado");
-    await AsyncStorage.setItem("color", user?.color || "No especificado");
-    await AsyncStorage.setItem("tipoSOS", tipo);
-
-    console.log(`SOS ${tipo} activado para ${user?.nombre} (${user?.moto}, ${user?.color}) - RiderID: ${riderId}`);
-
-    // Limpiar cualquier timeout o intervalo previo
-    if (timeoutSOS.current) clearTimeout(timeoutSOS.current);
-    if (intervaloSOS.current) clearInterval(intervaloSOS.current);
-
-    // Enviar inmediatamente y programar intervalo (sin esperar 10s)
-    await enviarUbicacionSOS();
-    if (!intervaloSOS.current) {
-      intervaloSOS.current = setInterval(() => enviarUbicacionSOS(), 2 * 60 * 1000);
-    }
-    // Asegurar tracking en background durante SOS
-    try { await iniciarUbicacionBackground(); } catch { }
-  };
-
-  
-
+};
   const cancelarSOS = async () => {
     try {
       console.log('Iniciando cancelación de SOS...');

@@ -2,12 +2,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, StyleSheet, FlatList, TextInput, TouchableOpacity, useColorScheme, Alert, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import ChatService from './services/ChatService';
+const MESSAGES_STORAGE_KEY = '@ChatMessages';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function ChatScreen({ visible, onClose, isPremium = false, isAdmin = false, currentUserId, onUpgrade }) {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const [message, setMessage] = useState('');
-  
+
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const listRef = useRef(null);
@@ -32,62 +36,180 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     return Array.from(map.values()).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   };
 
-  useEffect(() => {
-    if (!visible) return;
-
-    let mounted = true;
-    const init = async () => {
-      try {
-        setLoading(true);
-        // Conectar socket
-        await ChatService.connect();
-        // Historial inicial
-        const hist = await ChatService.fetchHistory({ room: 'global', limit: 50 });
-        if (mounted && hist?.success) {
-          const uniqueOrdered = mergeUniqueById([], hist.messages || []);
-          setMessages(uniqueOrdered);
-        }
-        // Suscripciones
-        ChatService.on('message:new', handleIncoming);
-        ChatService.on('message:deleted', handleDeleted);
-      } catch (e) {
-        console.warn('Error iniciando chat:', e?.message);
-      } finally {
-        setLoading(false);
+  // Cargar mensajes guardados al inicio
+  const loadSavedMessages = async () => {
+    try {
+      const savedMessages = await AsyncStorage.getItem(MESSAGES_STORAGE_KEY);
+      if (savedMessages) {
+        const parsed = JSON.parse(savedMessages);
+        // Filtrar mensajes inválidos
+        return parsed.filter(m => m && (m.id || (m.user_id && m.created_at)));
       }
-    };
-
-    init();
-
-    return () => {
-      mounted = false;
-      ChatService.off('message:new', handleIncoming);
-      ChatService.off('message:deleted', handleDeleted);
-    };
-  }, [visible]);
-
-  // Listeners de teclado (Android: para evitar espacios residuales con adjustPan)
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
-    return () => { try { showSub.remove(); hideSub.remove(); } catch (_) {} };
-  }, []);
-
-  const handleIncoming = (msg) => {
-    if (!msg) return;
-    setMessages((prev) => {
-      // Evitar duplicados (a veces llegan por socket y por fetch/paginación)
-      const merged = mergeUniqueById(prev, [msg]);
-      return merged;
-    });
+    } catch (error) {
+      console.error('Error cargando mensajes:', error);
+    }
+    return [];
   };
 
-  const handleDeleted = ({ id }) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === id ? { ...m, content: "Un administrador eliminó este mensaje", deleted: true } : m
-      )
+  // Guardar mensajes
+const saveMessages = async (msgs) => {
+  try {
+    // Filtrar mensajes inválidos antes de guardar
+    const validMessages = msgs.filter(m => 
+      m && (m.id || (m.user_id && m.content && m.created_at))
     );
+    await AsyncStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(validMessages));
+  } catch (error) {
+    console.error('Error guardando mensajes:', error);
+  }
+};
+  useEffect(() => {
+  let isMounted = true;
+  
+  const handleAppStateChange = async (nextAppState) => {
+    if (nextAppState === 'active' && isMounted) {
+      console.log('App en primer plano, recargando mensajes...');
+      try {
+        const hist = await ChatService.fetchHistory({ room: 'global', limit: 50 });
+        if (hist?.success && hist.messages?.length) {
+          console.log('Mensajes cargados del servidor:', hist.messages.length);
+          const savedMsgs = await loadSavedMessages();
+          const merged = mergeUniqueById(hist.messages, savedMsgs);
+          await saveMessages(merged);
+          if (isMounted) {
+            setMessages(merged);
+          }
+        }
+      } catch (error) {
+        console.error('Error al recargar mensajes:', error);
+      }
+    }
+  };
+
+  const subscription = AppState.addEventListener('change', handleAppStateChange);
+  
+  return () => {
+    isMounted = false;
+    subscription.remove();
+  }; 
+}, []);
+
+  // Actualizar cuando cambien los mensajes
+ useEffect(() => {
+  if (messages.length > 0) {
+    saveMessages(messages);
+  }
+}, [messages]);
+
+// Efecto principal de inicialización
+useEffect(() => {
+  if (!visible) return;
+  
+  let mounted = true;
+  let retryCount = 0;
+  const maxRetries = 3;
+
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Cargar mensajes guardados primero
+      const savedMsgs = await loadSavedMessages();
+      if (mounted) setMessages(savedMsgs);
+      
+      // 2. Conectar al chat
+      await ChatService.connect();
+      
+      // 3. Configurar listeners
+      ChatService.off('message:new', handleIncoming);
+      ChatService.off('message:deleted', handleDeleted);
+      
+      ChatService.on('message:new', handleIncoming);
+      ChatService.on('message:deleted', handleDeleted);
+      
+      // 4. Cargar mensajes del servidor con reintentos
+      const loadServerMessages = async (attempt = 1) => {
+        try {
+          console.log(`Cargando mensajes del servidor (intento ${attempt})...`);
+          const hist = await ChatService.fetchHistory({ 
+            room: 'global', 
+            limit: 50 
+          });
+          
+          if (mounted && hist?.success) {
+            console.log(`Mensajes recibidos: ${hist.messages?.length || 0}`);
+            const merged = mergeUniqueById(hist.messages || [], savedMsgs);
+            await saveMessages(merged);
+            if (mounted) setMessages(merged);
+          } else if (attempt < maxRetries) {
+            console.log(`Reintentando (${attempt + 1}/${maxRetries})...`);
+            setTimeout(() => loadServerMessages(attempt + 1), 1000 * attempt);
+          }
+        } catch (error) {
+          console.error(`Intento ${attempt} fallido:`, error);
+          if (attempt < maxRetries) {
+            setTimeout(() => loadServerMessages(attempt + 1), 1000 * attempt);
+          }
+        }
+      };
+      
+      await loadServerMessages();
+      
+    } catch (error) {
+      console.error('Error en loadInitialData:', error);
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  };
+
+  loadInitialData();
+
+  return () => {
+    mounted = false;
+  };
+}, [visible]);
+
+  // Actualizar handleIncoming para guardar los cambios
+const handleIncoming = async (msg) => {
+  if (!msg) return;
+  console.log('Mensaje recibido:', msg);
+  
+  setMessages(prev => {
+    // Verificar si el mensaje ya existe
+    const exists = prev.some(m => 
+      (m.id && m.id === msg.id) || 
+      (m.user_id === msg.user_id && m.created_at === msg.created_at)
+    );
+    
+    if (exists) {
+      console.log('Mensaje duplicado, ignorando');
+      return prev;
+    }
+    
+    console.log('Nuevo mensaje, guardando...');
+    const newMessages = [msg, ...prev];
+    
+    // Guardar sincrónicamente
+    AsyncStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(newMessages))
+      .then(() => console.log('Mensaje guardado en AsyncStorage'))
+      .catch(e => console.error('Error guardando mensaje:', e));
+      
+    return newMessages;
+  });
+};
+
+  // Actualizar handleDeleted para guardar los cambios
+  const handleDeleted = ({ id }) => {
+    setMessages((prev) => {
+      const updated = prev.map((m) =>
+        m.id === id
+          ? { ...m, content: "Un administrador eliminó este mensaje", deleted: true }
+          : m
+      );
+      // Guardar después de actualizar
+      saveMessages(updated).catch(console.error);
+      return updated;
+    });
   };
 
   const send = async () => {
@@ -153,7 +275,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     msgRow: { paddingHorizontal: 12, paddingVertical: 8, marginVertical: 2 },
     msgBubble: {
       borderRadius: 12,
-      padding: 10,
+      padding: 8,
       maxWidth: '85%'
     },
     ownBubble: {
@@ -166,7 +288,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
     },
     deletedBubble: {
       backgroundColor: isDarkMode ? '#1f1f1f' : '#f0f0f0',
-      alignSelf: 'center'
+
     },
     msgHeader: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 2 },
     meta: { fontSize: 12, color: isDarkMode ? '#ddd' : '#2c3e50', marginRight: 6 },
@@ -178,7 +300,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       fontStyle: 'italic',
       color: isDarkMode ? '#b0b0b0' : '#7f8c8d',
       textAlign: 'center',
-      letterSpacing: 0.3
+      letterSpacing: 0.4
     },
 
     inputBar: {
@@ -186,7 +308,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       alignItems: 'center',
       paddingHorizontal: 10,
       paddingTop: 10,
-      paddingBottom: Platform.OS === 'android' ? 30 : 40,
+      paddingBottom: Platform.OS === 'android' ? 20 : 60,
       borderTopWidth: 1,
       borderTopColor: isDarkMode ? '#222' : '#eaeaea',
       backgroundColor: isDarkMode ? '#121212' : '#ffffff'
@@ -227,7 +349,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
 
   const renderItem = ({ item }) => {
     const fecha = item?.created_at ? new Date(item.created_at) : null;
-    const hora = fecha ? `${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}` : '';
+    const hora = fecha ? `${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}` : '';
     const isOwn = item?.user_id && currentUserId && Number(item.user_id) === Number(currentUserId);
     const isDeleted = item?.deleted || item?.content === 'Un administrador eliminó este mensaje';
     const bubbleStyle = [
@@ -262,7 +384,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'android' ? 'padding' : 'padding'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 120}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 100}
       >
         <View style={styles.header}>
           <Text style={styles.title}> Chat Riders</Text>
@@ -274,11 +396,11 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         <FlatList
           ref={listRef}
           style={styles.list}
-          contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 0 : 100 }}
+          contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 100 : 100 }}
           data={messages}
           inverted={true}
           keyExtractor={(item) => String(item?.id ?? `${item?.user_id || 'u'}-${item?.created_at || Math.random()}`)}
-          renderItem={renderItem} 
+          renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
           refreshing={loading}
           onRefresh={async () => {
@@ -304,7 +426,7 @@ export default function ChatScreen({ visible, onClose, isPremium = false, isAdmi
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={isPremium|| isAdmin ? 'Escribe un mensaje...' : 'Disponible con Premium'}
+            placeholder={isPremium || isAdmin ? 'Escribe un mensaje...' : 'Disponible con Premium'}
             placeholderTextColor={isDarkMode ? '#777' : '#999'}
             value={message}
             onChangeText={setMessage}

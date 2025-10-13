@@ -18,11 +18,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors());
 
-//middleware de debugging 
-//app.use((req, res, next) => {
-// console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
-//next();
-//})
 
 // Servir archivos estáticos de premium
 app.use('/premium', express.static(path.join(__dirname, 'public/premium')));
@@ -72,7 +67,7 @@ const notificarSOSAOtrosUsuarios = (sosData) => {
 // Recibir ubicación/SOS
 app.post("/sos", async (req, res) => {
   try {
-    const { riderId, nombre, moto, color, ubicacion, fechaHora, tipo, tipoSOSActual, cancel } = req.body;
+    const { riderId, nombre, moto, color, ubicacion, fechaHora, tipo, tipoSOSActual, cancel, esActualizacion, esEmergencia } = req.body;
     // Validar sin rechazar coordenadas 0,0
     const latValida = typeof ubicacion?.lat === 'number' && !Number.isNaN(ubicacion.lat);
     const lngValida = typeof ubicacion?.lng === 'number' && !Number.isNaN(ubicacion.lng);
@@ -81,17 +76,16 @@ app.post("/sos", async (req, res) => {
     }
 
     // Verificar si es un nuevo SOS (no actualización)
-    const esNuevoSOS = tipo && tipo !== "normal" && tipo !== "actualizacion" && !riders[riderId];
-    const esSOSInicial = tipo && tipo !== "normal" && tipo !== "actualizacion" && riders[riderId]?.tipo !== tipo;
-
+    const esNuevoSOS = !esActualizacion && tipo && tipo !== "normal" && tipo !== "actualizacion" && !riders[riderId];
+    const esSOSInicial = !esActualizacion && tipo && tipo !== "normal" && tipo !== "actualizacion" && riders[riderId]?.tipo !== tipo;
+    
     // Anti-burst: ignorar ráfagas de 'actualizacion' del mismo rider en < 3s o con misma fechaHora
     const nowTs = Date.now();
     const last = lastReceive[riderId];
-    if (tipo === 'actualizacion') {
+    if (esActualizacion || tipo === 'actualizacion') {
       const mismaFecha = last && last.fechaIso === fechaHora;
       const ventanaCorta = last && (nowTs - last.ts) < 3000; // 3 segundos
       if (mismaFecha || ventanaCorta) {
-        // Actualizar solo stamp interno y devolver success sin cambiar estado
         lastReceive[riderId] = { ts: nowTs, fechaIso: fechaHora, tipo };
         return res.json({ success: true, ignored: true, reason: 'anti-burst-actualizacion' });
       }
@@ -188,10 +182,25 @@ app.post("/sos", async (req, res) => {
       appActive: tipoAAlmacenar === "normal" ? true : riders[riderId]?.appActive || false,
     };
 
-    console.log(`Ubicación recibida de ${nombre} (${riderId}):`, ubicacion, "tipo:", tipo, "almacenadoComo:", tipoAAlmacenar, "cancel:", cancel === true);
 
+    const esNotificable = (esNuevoSOS || esSOSInicial) && 
+                     !esActualizacion && 
+                     tipoAAlmacenar && 
+                     ['robo', 'accidente'].includes(tipoAAlmacenar);
+
+if (esNotificable) {
+    console.log('🚨 Enviando ALERTA por:', tipoAAlmacenar);
+    notificarSOSAOtrosUsuarios({
+      riderId,
+      nombre,
+      moto,
+      color,
+      ubicacion,
+      fechaHora,
+      tipo: tipoAAlmacenar
+    });
     // Notificar a otros usuarios si es un nuevo SOS
-    if (esNuevoSOS || esSOSInicial) {
+  /* if ((esNuevoSOS || esSOSInicial) && !esActualizacion) {
       notificarSOSAOtrosUsuarios({
         riderId,
         nombre,
@@ -201,7 +210,7 @@ app.post("/sos", async (req, res) => {
         fechaHora,
         tipo: tipoAAlmacenar
       });
-
+*/
       // Opción A: excluir al emisor usando JWT del header Authorization
       try {
         const authHeader = req.headers['authorization'];
@@ -392,6 +401,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Crear servidor HTTP y adjuntar Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
+app.set('io', io);
 
 // Inicializar chat en tiempo real
 require('./chat')(io);

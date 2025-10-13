@@ -4,46 +4,92 @@ import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { iniciarUbicacionBackground } from './tasks';
 import { getBackendURL } from './config';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+const NOTIFICATION_TOKEN_KEY = '@notification_token';
 
 // Configuración de notificaciones para background
 export const configurarNotificaciones = async () => {
-  // Configurar el handler de notificaciones
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
+  try {
+    // Configuración del canal de notificaciones para Android
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        enableVibrate: true,
+        enableLights: true,
+      });
+    }
 
-  // Solicitar permisos con configuración específica para background
-  const { status } = await Notifications.requestPermissionsAsync({
-    ios: {
-      allowAlert: true,
-      allowBadge: true,
-      allowSound: true,
-      allowAnnouncements: true,
-      allowCriticalAlerts: false,
-      provideAppNotificationSettings: false,
-      allowProvisional: false,
-    },
-  });
-  return status === 'granted';
+    // Configurar el manejador de notificaciones
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+
+    // Solicitar permisos
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+        allowAnnouncements: true,
+      },
+    });
+
+    if (status !== 'granted') {
+      console.log('Permiso de notificaciones denegado');
+      return false;
+    }
+
+    // Obtener el token de notificación
+    if (Device.isDevice) {
+      const token = (await Notifications.getExpoPushTokenAsync({
+        projectId: Constants.expoConfig.extra.eas.projectId,
+      })).data;
+
+      // Verificar si el token ha cambiado
+      const oldToken = await AsyncStorage.getItem(NOTIFICATION_TOKEN_KEY);
+      if (oldToken !== token) {
+        console.log('Nuevo token de notificación:', token);
+        await AsyncStorage.setItem(NOTIFICATION_TOKEN_KEY, token);
+        // Aquí deberías llamar a tu función para guardar el token en tu backend
+        // await guardarTokenEnBackend(token);
+      }
+
+      return true;
+    } else {
+      console.log('Debes usar un dispositivo físico para recibir notificaciones push');
+      return false;
+    }
+  } catch (error) {
+    console.error('Error configurando notificaciones:', error);
+    return false;
+  }
 };
-
 // Función para enviar notificación de estado con control de duplicados
 export const enviarNotificacionEstado = async (titulo, mensaje, datos = {}) => {
   try {
-    // Generar ID único basado en el título
+    // Verificar si las notificaciones están configuradas
+    const configurado = await verificarConfiguracionNotificaciones();
+    if (!configurado) {
+      console.log('Notificaciones no configuradas, intentando configurar...');
+      await configurarNotificaciones();
+    }
+
+    // Resto de tu lógica existente...
     const notificationId = `estado-${titulo.replace(/\s+/g, '-').toLowerCase()}`;
-    
-    // Verificar si ya se envió esta notificación recientemente
     const ultimaNotificacion = await AsyncStorage.getItem(`ultimaNotificacion_${notificationId}`);
     const ahora = Date.now();
     
     if (ultimaNotificacion && (ahora - parseInt(ultimaNotificacion)) < 60000) {
-      // No enviar si se envió hace menos de 1 minuto
       console.log(`Notificación ${notificationId} omitida (duplicado)`);
       return;
     }
@@ -56,13 +102,14 @@ export const enviarNotificacionEstado = async (titulo, mensaje, datos = {}) => {
         sound: true,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       },
-      trigger: null, // Enviar inmediatamente
+      trigger: null,
     });
     
-    // Guardar timestamp de la última notificación
     await AsyncStorage.setItem(`ultimaNotificacion_${notificationId}`, ahora.toString());
+    return true;
   } catch (error) {
-    console.error('Error enviando notificación:', error);
+    console.error('Error en enviarNotificacionEstado:', error);
+    return false;
   }
 };
 
@@ -423,5 +470,38 @@ export const manejarNotificacionSOS = async (notification) => {
     }
   } catch (error) {
     console.error('Error manejando notificación SOS:', error);
+  }
+
+};
+
+export const verificarConfiguracionNotificaciones = async () => {
+  try {
+    const token = await AsyncStorage.getItem(NOTIFICATION_TOKEN_KEY);
+    if (!token) {
+      console.log('No se encontró token de notificación');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error verificando configuración de notificaciones:', error);
+    return false;
+  }
+};
+
+// Función para enviar notificación de prueba
+export const enviarNotificacionPrueba = async () => {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Prueba de notificación",
+        body: "¡Esta es una notificación de prueba!",
+        sound: true,
+      },
+      trigger: null, // Enviar inmediatamente
+    });
+    return true;
+  } catch (error) {
+    console.error('Error enviando notificación de prueba:', error);
+    return false;
   }
 };

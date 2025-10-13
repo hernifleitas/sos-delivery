@@ -11,6 +11,10 @@ class ChatService {
     this.socket = null;
   }
 
+  getSocket() {
+    return this.socket;
+  }
+
   async getToken() {
     return await AsyncStorage.getItem('authToken');
   }
@@ -70,23 +74,30 @@ class ChatService {
   }
 
   async fetchHistory({ room = 'global', before = null, limit = 50 } = {}) {
-    const token = await this.getToken();
-    try {
-      const response = await axios.get(`${BACKEND_URL}/chat/history`, {
-        params: { room, before, limit },
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000,
-      });
-      return response.data;
-    } catch (e) {
-      const status = e?.response?.status;
-      if (status === 401 || status === 403) {
-        try { await AsyncStorage.removeItem('authToken'); } catch {}
-        return { success: false, message: 'No autorizado' };
+  const token = await this.getToken();
+  const url = `${BACKEND_URL}/api/chat/history?room=${room}&limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Cache-Control': 'no-cache'
       }
-      return { success: false, message: e?.message || 'Error de red' };
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        await AsyncStorage.removeItem('authToken');
+        return { success: false, message: 'Sesión expirada' };
+      }
+      throw new Error('Error en la respuesta del servidor');
     }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error en fetchHistory:', error);
+    return { success: false, message: error.message || 'Error de conexión' };
   }
+}
 
   disconnect() {
     if (this.socket) {

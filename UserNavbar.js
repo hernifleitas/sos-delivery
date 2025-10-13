@@ -10,6 +10,8 @@ import {
   Alert, 
   useColorScheme,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   Dimensions
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -451,69 +453,82 @@ export default function UserNavbar({ user, onLogout, onUpdateUser, visible, onCl
 
       {/* Modal de cambiar contraseña */}
       <Modal
-        visible={showChangePassword}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowChangePassword(false)}
-      >
-        <View style={dynamicStyles.modalOverlay}>
-          <View style={dynamicStyles.modalContent}>
-            <View style={dynamicStyles.modalHeader}>
-              <Text style={dynamicStyles.modalTitle}>🔐 Nueva Contraseña</Text>
-              <TouchableOpacity 
-                style={dynamicStyles.closeButton}
-                onPress={() => setShowChangePassword(false)}
-              >
-                <Text style={dynamicStyles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={dynamicStyles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Email</Text>
-                <TextInput
-                  style={[dynamicStyles.input, email ? dynamicStyles.inputFocused : null]}
-                  placeholder="Ingresa tu email"
-                  placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              
-              <View style={dynamicStyles.inputContainer}>
-                <Text style={[dynamicStyles.inputLabel, { color: "#7f8c8d", fontSize: 14 }]}>
-                  Se enviará un link a tu email para cambiar la contraseña
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  dynamicStyles.actionButton,
-                  loading ? { backgroundColor: "#95a5a6" } : null
-                ]}
-                onPress={handleChangePassword}
-                disabled={loading}
-              >
-                <Text style={dynamicStyles.actionButtonText}>
-                  {loading ? "Enviando..." : "📧 Enviar Link de Recuperación"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[dynamicStyles.actionButton, dynamicStyles.actionButtonSecondary]}
-                onPress={() => setShowChangePassword(false)}
-              >
-                <Text style={[dynamicStyles.actionButtonText, dynamicStyles.actionButtonTextSecondary]}>
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+  visible={showChangePassword}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => setShowChangePassword(false)}
+>
+  <KeyboardAvoidingView
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    style={{ flex: 1 }}
+  >
+    <View style={dynamicStyles.modalOverlay}>
+      <View style={dynamicStyles.modalContent}>
+        <View style={dynamicStyles.modalHeader}>
+          <Text style={dynamicStyles.modalTitle}>🔐 Nueva Contraseña</Text>
+          <TouchableOpacity 
+            style={dynamicStyles.closeButton}
+            onPress={() => setShowChangePassword(false)}
+          >
+            <Text style={dynamicStyles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <ScrollView 
+          contentContainerStyle={{ 
+            paddingBottom: 40, // Espacio extra en la parte inferior
+            flexGrow: 1,
+            justifyContent: 'center',
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[dynamicStyles.inputContainer, { marginTop: 10 }]}>
+            <Text style={dynamicStyles.inputLabel}>Email</Text>
+            <TextInput
+              style={[dynamicStyles.input, email ? dynamicStyles.inputFocused : null]}
+              placeholder="Ingresa tu email"
+              placeholderTextColor={isDarkMode ? "#666666" : "#999999"}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          
+          <View style={[dynamicStyles.inputContainer, { marginBottom: 20 }]}>
+            <Text style={[dynamicStyles.inputLabel, { color: "#7f8c8d", fontSize: 14 }]}>
+              Se enviará un link a tu email para cambiar la contraseña
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              dynamicStyles.actionButton,
+              loading ? { backgroundColor: "#95a5a6" } : null,
+              { marginBottom: 15 }
+            ]}
+            onPress={handleChangePassword}
+            disabled={loading}
+          >
+            <Text style={dynamicStyles.actionButtonText}>
+              {loading ? "Enviando..." : "📧 Enviar Link de Recuperación"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[dynamicStyles.actionButton, dynamicStyles.actionButtonSecondary]}
+            onPress={() => setShowChangePassword(false)}
+          >
+            <Text style={[dynamicStyles.actionButtonText, dynamicStyles.actionButtonTextSecondary]}>
+              Cancelar
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </View>
+  </KeyboardAvoidingView>
+</Modal>
     </>
   );
 }

@@ -36,5 +36,33 @@
         <data android:scheme="exp+sos-app"/>
       </intent-filter>
     </activity>
+
+    <service
+    android:name=".MyFirebaseMessagingService"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
+
+<service
+    android:name="expo.modules.notifications.service.NotificationsService"
+    android:exported="false" />
+    
+<service
+    android:name="expo.modules.notifications.service.ScheduledNotificationsService"
+    android:exported="false" />
+
+<!-- Para notificaciones en Android 13+ -->
+<receiver
+    android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
+    android:exported="true"
+    android:permission="com.google.android.c2dm.permission.SEND" >
+    <intent-filter>
+        <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+        <action android:name="com.google.android.c2dm.intent.REGISTRATION" />
+        <category android:name="com.hernifleitas.sosapp" />
+    </intent-filter>
+</receiver>
   </application>
 </manifest>

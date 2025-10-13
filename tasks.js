@@ -117,19 +117,21 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       const nowTs = Date.now();
       const ACTIVATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
       const tipoActual = (await AsyncStorage.getItem("tipoSOS")) || "";
-      const permitido = tipoActual === 'robo' || tipoActual === 'accidente';
+      const esEmergencia = tipoActual === 'robo' || tipoActual === 'accidente';
       const dentroDeVentana = sosInicio && (nowTs - sosInicio) <= ACTIVATION_WINDOW_MS;
-
-      if (!permitido || !dentroDeVentana) {
-        // Resetear flags para evitar loops y no enviar nada
+      
+      if (esEmergencia) {
+        // Si es una emergencia, forzar el envío de ubicación
+        await enviarUbicacionSOS(latest.coords, true);
+      } else if (!dentroDeVentana) {
+        // Si no es emergencia y está fuera de la ventana, limpiar
         await AsyncStorage.multiRemove([
           'sosActivo',
           'sosEnviado',
           'contadorActualizaciones'
         ]);
         await AsyncStorage.setItem('tipoSOS', '');
-        console.log('[SOS] Bloqueado por guardas: permitido=', permitido, 'dentroDeVentana=', dentroDeVentana);
-        return;
+        console.log('[SOS] Limpiando estado por ventana de tiempo excedida');
       }
     } catch (_) { /* si falla, continuar con más validaciones abajo */ }
 
