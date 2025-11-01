@@ -646,6 +646,8 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
         originWhitelist={['*']}
         source={{ html }}
         style={styles.map}
+        androidLayerType="software"
+        renderToHardwareTextureAndroid={false}
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data || '{}');

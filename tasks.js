@@ -92,24 +92,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (sosActivoValue === "true") {
     // VALIDACIÓN ESTRICTA: Requerir confirmación explícita del usuario antes de cualquier envío
     const sosConfirmado = await AsyncStorage.getItem('sosConfirmadoPorUsuario');
-    const timestampConfirmacion = await AsyncStorage.getItem('sosConfirmadoTimestamp');
-
     if (!sosConfirmado || sosConfirmado !== 'true') {
       console.log('[SOS] Bloqueado: falta confirmación explícita del usuario en background task');
-      await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
+      await AsyncStorage.multiRemove(['sosActivo', 'sosEnviado', 'contadorActualizaciones']);
       await AsyncStorage.setItem('tipoSOS', '');
       return;
     }
 
-    // Verificar que la confirmación sea reciente (máximo 30 segundos)
-    const ahora = Date.now();
-    const timestamp = timestampConfirmacion ? parseInt(timestampConfirmacion) : 0;
-    if (ahora - timestamp > 30000) {
-      console.log('[SOS] Bloqueado: confirmación expirada en background task');
-      await AsyncStorage.multiRemove(['sosActivo','sosEnviado','contadorActualizaciones']);
-      await AsyncStorage.setItem('tipoSOS', '');
-      return;
-    }
     // Anti-falsos positivos: exigir activación reciente y tipo válido
     try {
       const sosInicioStr = await AsyncStorage.getItem('sosInicio');
@@ -119,7 +108,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       const tipoActual = (await AsyncStorage.getItem("tipoSOS")) || "";
       const esEmergencia = tipoActual === 'robo' || tipoActual === 'accidente';
       const dentroDeVentana = sosInicio && (nowTs - sosInicio) <= ACTIVATION_WINDOW_MS;
-      
+
       if (esEmergencia) {
         // Si es una emergencia, forzar el envío de ubicación
         await enviarUbicacionSOS(latest.coords, true);
@@ -163,28 +152,15 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       const authToken = await AsyncStorage.getItem('authToken');
       await axios.post(BACKEND_URL, mensajeBackend, {
         headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-        timeout: 15000,
+        timeout: 20000,
       });
+
 
       if (sosEnviado !== "true") {
         await AsyncStorage.setItem("sosEnviado", "true");
-        await enviarNotificacion(
-          `SOS ${tipoSOS.toUpperCase()}`,
-          `Alerta enviada. Ubicación: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
-          `sos-${tipoSOS}-${riderId}`
-        );
-      } else {
-        const contadorActualizaciones = await AsyncStorage.getItem("contadorActualizaciones") || "0";
-        const contador = parseInt(contadorActualizaciones) + 1;
-        await AsyncStorage.setItem("contadorActualizaciones", contador.toString());
-        if (contador % 5 === 0) {
-          await enviarNotificacion(
-            `📍 Actualización ${tipoSOS.toUpperCase()}`,
-            `Ubicación actualizada. ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
-            `update-${tipoSOS}-${riderId}-${contador}`
-          );
-        }
       }
+
+
     } catch (err) {
       console.error("Error enviando ubicación al backend:", err.message);
       if (sosEnviado !== "true") {
@@ -239,33 +215,54 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 export const iniciarUbicacionBackground = async () => {
   try {
-    const { status: notificationStatus } = await Notifications.requestPermissionsAsync();
-    if (notificationStatus !== 'granted') {
-      console.log("Permiso de notificaciones denegado");
-    }
 
     const { status } = await Location.requestForegroundPermissionsAsync();
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
 
     if (status === "granted" && bgStatus === "granted") {
       const isTaskRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (isTaskRegistered) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      }
+
       if (!isTaskRegistered) {
+        // Configuración del servicio en segundo plano
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 60000,
-          distanceInterval: 0,
-          deferredUpdatesInterval: 60000,
-          deferredUpdatesDistance: 0,
-          activityType: Location.ActivityType.Other,
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 30000,  // 30 segundos
+          distanceInterval: 5, // 5 metros
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: "🚨 SOS Activo",
-            notificationBody: "Compartiendo ubicación en tiempo real",
+            notificationBody: "Monitoreando tu ubicación",
             notificationColor: "#e74c3c",
+            notificationChannelId: "sos-channel",
+            notificationIcon: "ic_notification",
+            notificationPriority: 2, // PRIORITY_HIGH
           },
-          mayShowUserSettingsDialog: true,
-          pausesLocationUpdatesAutomatically: false,
+          // Configuración específica para Android
+          android: {
+            notificationChannelId: "sos-channel",
+            notificationTitle: "🚨 SOS Activo",
+            notificationText: "Monitoreando tu ubicación",
+            notificationColor: "#e74c3c",
+            notificationIcon: "ic_notification",
+            notificationPriority: 2, // PRIORITY_HIGH
+            enableAccuracyNotification: true,
+            startForeground: true,
+            stopOnTerminate: false,
+            startOnBoot: true,
+            // Configuración adicional para mantener el servicio activo
+            foregroundService: {
+              notificationTitle: "🚨 SOS Activo",
+              notificationBody: "Monitoreando tu ubicación",
+              notificationColor: "#e74c3c"
+            }
+          }
         });
+
+        console.log("Servicio de ubicación en segundo plano iniciado");
+        return true;
       }
     } else {
       await enviarNotificacion(
@@ -273,14 +270,16 @@ export const iniciarUbicacionBackground = async () => {
         "La aplicación necesita permisos de ubicación para funcionar correctamente",
         "permissions-required"
       );
+      return false;
     }
   } catch (error) {
     console.error("Error iniciando ubicación en segundo plano:", error);
     await enviarNotificacion(
       "Error de Configuración",
-      "No se pudo configurar el tracking de ubicación",
+      "No se pudo configurar el tracking de ubicación: " + error.message,
       "config-error"
     );
+    return false;
   }
 };
 

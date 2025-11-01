@@ -308,7 +308,7 @@ const handleIncoming = async (msg) => {
       alignItems: 'center',
       paddingHorizontal: 10,
       paddingTop: 10,
-      paddingBottom: Platform.OS === 'android' ? 20 : 60,
+      paddingBottom: Platform.OS === 'android' ? 40 : 60,
       borderTopWidth: 1,
       borderTopColor: isDarkMode ? '#222' : '#eaeaea',
       backgroundColor: isDarkMode ? '#121212' : '#ffffff'
@@ -384,7 +384,7 @@ const handleIncoming = async (msg) => {
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'android' ? 'padding' : 'padding'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 100}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 65 : 0}
       >
         <View style={styles.header}>
           <Text style={styles.title}> Chat Riders</Text>
@@ -396,7 +396,7 @@ const handleIncoming = async (msg) => {
         <FlatList
           ref={listRef}
           style={styles.list}
-          contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 100 : 100 }}
+          contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 40 : 60 }}
           data={messages}
           inverted={true}
           keyExtractor={(item) => String(item?.id ?? `${item?.user_id || 'u'}-${item?.created_at || Math.random()}`)}

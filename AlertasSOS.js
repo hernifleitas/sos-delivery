@@ -25,9 +25,14 @@ export default function AlertasSOS() {
         timeout: 10000,
         headers: { "Content-Type": "application/json" }
       });
-      if (response.data && Array.isArray(response.data)) {
-        setAlertas(response.data);
-      }
+
+    if (response.data && Array.isArray(response.data)) {
+  const alertasFiltradas = response.data.filter(alerta => 
+    alerta.tipo === 'robo' || alerta.tipo === 'accidente'
+  );
+
+  setAlertas(alertasFiltradas);
+}
       setLoading(false);
     } catch (error) {
       console.error("Error obteniendo alertas:", error.message);

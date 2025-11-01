@@ -27,10 +27,9 @@ export const configurarNotificaciones = async () => {
     // Configurar el manejador de notificaciones
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
+    shouldShowAlert: true,    
+    shouldPlaySound: true, 
+    shouldSetBadge: false,
       }),
     });
 
@@ -54,6 +53,8 @@ export const configurarNotificaciones = async () => {
       const token = (await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig.extra.eas.projectId,
       })).data;
+
+      console.log("Token de notificación:", token.data);
 
       // Verificar si el token ha cambiado
       const oldToken = await AsyncStorage.getItem(NOTIFICATION_TOKEN_KEY);

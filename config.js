@@ -9,8 +9,8 @@ export const CONFIG = {
   API_TIMEOUT: 15000,
   
   // Intervalos
-  LOCATION_INTERVAL: 2 * 60 * 1000, // 2 minutos para SOS
-  MAP_UPDATE_INTERVAL: 3000,        // 30 segundos para mapa
+  LOCATION_INTERVAL: 60000, // 30 SEGUNDOS PARA SOS
+  MAP_UPDATE_INTERVAL: 30000,        // 30 SEGUNDOS PARA MAPA
   ALERTAS_UPDATE_INTERVAL: 10000,    // 10 segundos para alertas
   
   // Configuración de notificaciones
@@ -38,7 +38,7 @@ export const CONFIG = {
   
   // Configuración de la app
   APP_NAME: 'Rider SOS',
-  APP_VERSION: '1.0.0',
+  APP_VERSION: '1.1.0',
   
   // Configuración de email
   EMAIL_CONFIG: {
