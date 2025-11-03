@@ -405,7 +405,7 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
 
   useEffect(() => {
     fetchRiders();
-    const interval = setInterval(fetchRiders, 5000);
+    const interval = setInterval(fetchRiders, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -488,14 +488,25 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
           // Variables globales para filtrado adicional en el WebView
           window.myRiderId = null;
           window.isRepartiendo = false;
-          const map = L.map('map', { zoomControl: false }).setView([-34.833, -58.449], 15);
+          const map = L.map('map', { 
+            zoomControl: false,
+            preferCanvas: true,
+            zoomAnimation: true,
+            fadeAnimation: true,
+            markerZoomAnimation: false
+          }).setView([-34.833, -58.449], 15);
           L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
             subdomains: 'abcd',
-            maxZoom: 19
+            maxZoom: 19,
+            updateWhenIdle: false,
+            updateWhenZooming: false,
+            keepBuffer: 2
           }).addTo(map);
 
           let markers = {};
+
+          const iconCache = {};
 
           function distanceMeters(a, b){
             const toRad = v => v * Math.PI / 180;
@@ -558,13 +569,17 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
               if (!r.riderId) return;
               currentIds.add(r.riderId);
 
-              const createCustomIcon = (color, size = 20) => {
-                const svgIcon = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-                  '<circle cx="12" cy="12" r="10" fill="' + color + '" stroke="white" stroke-width="3"/>' +
-                  '<circle cx="12" cy="12" r="6" fill="white" opacity="0.8"/>' +
-                  '<circle cx="12" cy="12" r="3" fill="' + color + '"/>' +
-                  '</svg>';
-                return L.divIcon({ html: svgIcon, className: 'custom-marker', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+            const createCustomIcon = (color, size = 20) => {
+                const cacheKey = color + '_' + size;
+                if (!iconCache[cacheKey]) {
+                  const svgIcon = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
+                    '<circle cx="12" cy="12" r="10" fill="' + color + '" stroke="white" stroke-width="3"/>' +
+                    '<circle cx="12" cy="12" r="6" fill="white" opacity="0.8"/>' +
+                    '<circle cx="12" cy="12" r="3" fill="' + color + '"/>' +
+                    '</svg>';
+                  iconCache[cacheKey] = L.divIcon({ html: svgIcon, className: 'custom-marker', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+                }
+                return iconCache[cacheKey];
               };
 
               const getMarkerColor = (sosColor) => {
@@ -580,13 +595,25 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
               const targetLatLng = L.latLng(Number(r.lat), Number(r.lng));
 
               if (markers[r.riderId]) {
-                animateMarker(markers[r.riderId], targetLatLng);
-                markers[r.riderId].setIcon(createCustomIcon(markerColor, markerSize));
-                markers[r.riderId].getPopup().setContent(r.popupContent);
+                const marker = markers[r.riderId];
+                animateMarker(marker, targetLatLng);
+                // Solo actualizar icono si cambió
+                const iconKey = markerColor + '_' + markerSize;
+                if (!marker._iconKey || marker._iconKey !== iconKey) {
+                  marker.setIcon(createCustomIcon(markerColor, markerSize));
+                  marker._iconKey = iconKey;
+                }
+                // Solo actualizar popup si cambió el contenido
+                if (marker._lastPopupContent !== r.popupContent) {
+                  marker.getPopup().setContent(r.popupContent);
+                  marker._lastPopupContent = r.popupContent;
+                }
               } else {
                 const marker = L.marker(targetLatLng, { icon: createCustomIcon(markerColor, markerSize) })
                   .addTo(map)
                   .bindPopup(r.popupContent, { className: 'custom-popup', maxWidth: 300 });
+                marker._iconKey = markerColor + '_' + markerSize;
+                marker._lastPopupContent = r.popupContent;
                 if (r.sosColor === "red" || r.sosColor === "yellow") {
                   marker.openPopup();
                 }
@@ -646,8 +673,7 @@ export default function MapRidersRealtimeOSM({ showMarkers }) {
         originWhitelist={['*']}
         source={{ html }}
         style={styles.map}
-        androidLayerType="software"
-        renderToHardwareTextureAndroid={false}
+        androidHardwareAccelerationDisabled={false}
         onMessage={({ nativeEvent }) => {
           try {
             const msg = JSON.parse(nativeEvent.data || '{}');

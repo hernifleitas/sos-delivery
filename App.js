@@ -308,18 +308,35 @@ export default function App() {
     return () => subscription?.remove();
   }, []);
 
-  // Manejar respuestas de notificaciones
+  // Manejar notificaciones recibidas cuando la app está en foreground
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📩 Notificación recibida en foreground:', notification);
+      // La notificación se mostrará automáticamente gracias a setNotificationHandler
+    });
+
+    return () => notificationListener.remove();
+  }, []);
+
+  // Manejar respuestas de notificaciones (cuando el usuario toca la notificación)
+  useEffect(() => {
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('👆 Usuario tocó la notificación:', response);
       const { data } = response.notification.request.content;
+      
+      // Manejar notificaciones de chat
       if (data.chatId) {
-        // Actualizar el estado del chat o forzar una recarga de mensajes
         setChatId(data.chatId);
         loadMessages(data.chatId);
       }
+      
+      // Manejar notificaciones de SOS
+      if (data.tipo === 'robo' || data.tipo === 'accidente') {
+        console.log('🚨 Notificación de SOS detectada');
+      }
     });
   
-    return () => subscription.remove();
+    return () => responseListener.remove();
   }, []);
 
   // Registro de push tokens cuando el usuario inicia sesión
