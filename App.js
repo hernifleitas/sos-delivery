@@ -663,6 +663,10 @@ export default function App() {
         // Guardar el estado de la alerta
         await AsyncStorage.setItem('sosActivo', 'true');
         await AsyncStorage.setItem('tipoSOS', tipo);
+        await AsyncStorage.setItem('sosInicio', Date.now().toString());
+        // Flag crítico para que el background task procese las actualizaciones
+        await AsyncStorage.setItem('sosConfirmadoPorUsuario', 'true');
+        await AsyncStorage.setItem('sosConfirmadoTimestamp', Date.now().toString());
         setSosActivo(true);
         setTipoSOS(tipo);
         

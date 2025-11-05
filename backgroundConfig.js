@@ -117,6 +117,16 @@ export const enviarNotificacionEstado = async (titulo, mensaje, datos = {}) => {
 // Función para enviar notificación con botones de acción SOS
 export const enviarNotificacionSOS = async () => {
   try {
+    // Control de duplicados: solo enviar una notificación cada 5 minutos
+    const notificationId = 'sos-quick-access';
+    const ultimaNotificacion = await AsyncStorage.getItem(`ultimaNotificacion_${notificationId}`);
+    const ahora = Date.now();
+    
+    if (ultimaNotificacion && (ahora - parseInt(ultimaNotificacion)) < 300000) { // 5 minutos
+      console.log('Notificación SOS rápida omitida (duplicado)');
+      return;
+    }
+    
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "🚨 SOS Rápido",
@@ -128,6 +138,8 @@ export const enviarNotificacionSOS = async () => {
       },
       trigger: null,
     });
+    
+    await AsyncStorage.setItem(`ultimaNotificacion_${notificationId}`, ahora.toString());
   } catch (error) {
     console.error('Error enviando notificación SOS:', error);
   }

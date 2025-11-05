@@ -24,7 +24,7 @@
       "distribution": "store",
       "android": {
         "buildType": "app-bundle",
-        "gradleCommand": ":app:assembleRelease"
+        "gradleCommand": ":app:bundleRelease"
       },
       "ios": {
         "simulator": false

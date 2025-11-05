@@ -7,7 +7,7 @@ const emailService = require('../email');
 
 class AuthService {
   constructor() {
-    this.jwtSecret = process.env.JWT_SECRET || 'rider-sos-secret-key-2024';
+    this.jwtSecret = process.env.JWT_SECRET
     this.jwtExpiresIn = '7d'; // Token válido por 7 días
   }
 
@@ -816,6 +816,119 @@ router.post('/admin/reject-user/:userId', authService.authenticateToken.bind(aut
     });
   }
 });
+
+// Obtener todos los usuarios (admin)
+router.get('/admin/all-users',
+  authService.authenticateToken.bind(authService),
+  authService.requireAdmin.bind(authService),
+  async (req, res) => {
+    try {
+      const result = await database.pool.query(
+        `SELECT id, nombre, email, telefono, moto, color, role, 
+                is_active, created_at, premium_expires_at 
+         FROM users 
+         WHERE is_active = true
+         ORDER BY created_at DESC`
+      );
+
+      res.json({
+        success: true,
+        users: result.rows
+      });
+    } catch (error) {
+      console.error('Error obteniendo todos los usuarios:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor'
+      });
+    }
+  });
+
+// Hacer premium a un usuario (admin)
+router.post('/admin/make-premium/:userId',
+  authService.authenticateToken.bind(authService),
+  authService.requireAdmin.bind(authService),
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { days = 30 } = req.body;
+
+      // Calcular fechas
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + days);
+
+      const client = await database.pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // 1. Actualizar usuario a premium
+        await client.query(`
+          UPDATE users 
+          SET role = 'premium',
+              is_premium = true,
+              premium_expires_at = $1,
+              updated_at = NOW()
+          WHERE id = $2
+        `, [endDate, userId]);
+
+        // 2. Crear registro de pago simulado (admin)
+        const paymentResult = await client.query(`
+          INSERT INTO payments (
+            user_id, 
+            preference_id, 
+            mercadopago_payment_id,
+            amount,
+            currency,
+            status,
+            created_at,
+            updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+          RETURNING id
+        `, [
+          userId,
+          'ADMIN-' + Date.now(),
+          'ADMIN-PAY-' + Date.now(),
+          0,
+          'ARS',
+          'approved'
+        ]);
+
+        // 3. Crear suscripción (sin payment_id ya que no existe esa columna)
+        await client.query(`
+          INSERT INTO premium_subscriptions (
+            user_id, 
+            start_date, 
+            end_date, 
+            is_active,
+            mercadopago_payment_id
+          ) VALUES ($1, $2, $3, true, $4)
+        `, [userId, startDate, endDate, 'ADMIN-PAY-' + Date.now()]);
+
+        await client.query('COMMIT');
+
+        res.json({
+          success: true,
+          message: `Premium activado por ${days} días`,
+          expiresAt: endDate
+        });
+
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+    } catch (error) {
+      console.error('Error haciendo premium al usuario:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
+    }
+  });
 
 router.post('/activate', async (req, res) => {
   try {

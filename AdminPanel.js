@@ -24,12 +24,14 @@ export default function AdminPanel({ onClose }) {
   const isDarkMode = colorScheme === 'dark';
 
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'all'
 
   useEffect(() => {
     loadPendingUsers();
+    loadAllUsers();
   }, []);
 
   const loadPendingUsers = async () => {
@@ -69,9 +71,37 @@ export default function AdminPanel({ onClose }) {
     }
   };
 
+  const loadAllUsers = async () => {
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const response = await axios.get(`${BACKEND_URL}/auth/admin/all-users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (response.data.success) {
+        setAllUsers(response.data.users || []);
+        console.log('Todos los usuarios cargados:', response.data.users?.length || 0);
+      } else {
+        Alert.alert("Error", response.data.message || "Error cargando usuarios");
+      }
+    } catch (error) {
+      console.error("Error cargando todos los usuarios:", error);
+      if (error.response?.status === 403) {
+        Alert.alert("Error", "Acceso denegado. Solo administradores pueden acceder");
+      } else {
+        Alert.alert("Error", "Error de conexión al cargar usuarios");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadPendingUsers();
+    await loadAllUsers();
     setRefreshing(false);
   };
 
@@ -356,6 +386,31 @@ export default function AdminPanel({ onClose }) {
     rejectedStatus: {
       color: "#e74c3c",
     },
+    premiumButton: {
+      backgroundColor: "#9b59b6",
+      paddingVertical: 12,
+      paddingHorizontal: 15,
+      borderRadius: 8,
+      flex: 1,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    premiumBadge: {
+      backgroundColor: "#9b59b6",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      alignSelf: 'flex-start',
+      marginBottom: 8,
+    },
+    premiumBadgeText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: 'bold',
+    },
   });
 
   const renderPendingUserItem = (user) => (
@@ -387,6 +442,87 @@ export default function AdminPanel({ onClose }) {
     </View>
   );
 
+  const handleMakePremium = async (userId, userName) => {
+  Alert.alert(
+    "Activar Premium",
+    `¿Activar Premium por 30 días para ${userName}?`,
+    [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Activar Premium",
+        style: "default",
+        onPress: async () => {
+          try {
+            const token = await AsyncStorage.getItem('authToken');
+            const response = await axios.post(
+              `${BACKEND_URL}/auth/admin/make-premium/${userId}`,
+              { days: 30 },
+              {
+                headers: { 'Authorization': `Bearer ${token}` },
+                timeout: 15000
+              }
+            );
+
+            if (response.data.success) {
+              Alert.alert("✅ Éxito", `Premium activado para ${userName} por 30 días`);
+              // Recargar la lista de usuarios
+              await loadAllUsers();
+            } else {
+              Alert.alert("❌ Error", response.data.message || "Error activando premium");
+            }
+          } catch (error) {
+            console.error("Error activando premium:", error);
+            Alert.alert(
+              "❌ Error", 
+              error.response?.data?.message || "Error de conexión al activar premium"
+            );
+          }
+        }
+      }
+    ]
+  );
+};
+
+  const renderAllUserItem = (user) => (
+    <View key={user.id} style={dynamicStyles.userCard}>
+      {(user.role === 'premium' || user.role === 'admin') && (
+        <View style={dynamicStyles.premiumBadge}>
+          <Text style={dynamicStyles.premiumBadgeText}>
+            {user.role === 'admin' ? '👑 ADMIN' : '⭐ PREMIUM'}
+          </Text>
+        </View>
+      )}
+      <Text style={dynamicStyles.userName}>Nombre: {user.nombre}</Text>
+      <Text style={dynamicStyles.userTelefono}>Teléfono: {user.telefono}</Text>
+      <Text style={dynamicStyles.userEmail}>Email: {user.email}</Text>
+      <Text style={dynamicStyles.userInfo}>Moto: {user.moto || 'No especificada'}</Text>
+      <Text style={dynamicStyles.userInfo}>Color: {user.color}</Text>
+      <Text style={dynamicStyles.userInfo}>Rol: {user.role || 'user'}</Text>
+      {user.premium_expires_at && (
+        <Text style={dynamicStyles.userInfo}>
+          Premium hasta: {formatDate(user.premium_expires_at)}
+        </Text>
+      )}
+      <Text style={dynamicStyles.userDate}>
+        Registrado: {formatDate(user.created_at)}
+      </Text>
+
+      {user.role !== 'admin' && (
+        <View style={dynamicStyles.buttonRow}>
+          <TouchableOpacity
+            style={dynamicStyles.premiumButton}
+            onPress={() => handleMakePremium(user.id, user.nombre)}
+          >
+            <Text style={dynamicStyles.buttonText}>
+              {user.role === 'premium' ? '🔄 Renovar Premium 30d' : '⭐ Hacer Premium 30d'}
+            </Text>
+          </TouchableOpacity>
+          
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
@@ -408,10 +544,18 @@ export default function AdminPanel({ onClose }) {
             onPress={() => setActiveTab('pending')}
           >
             <Text style={[dynamicStyles.tabText, activeTab === 'pending' ? dynamicStyles.activeTabText : dynamicStyles.inactiveTabText]}>
-              Pendientes ({pendingUsers?.length || 0} )
+              Pendientes ({pendingUsers?.length || 0})
             </Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[dynamicStyles.tab, activeTab === 'all' ? dynamicStyles.activeTab : dynamicStyles.inactiveTab]}
+            onPress={() => setActiveTab('all')}
+          >
+            <Text style={[dynamicStyles.tabText, activeTab === 'all' ? dynamicStyles.activeTabText : dynamicStyles.inactiveTabText]}>
+              Todos ({allUsers?.length || 0})
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {loading && <Text style={dynamicStyles.loadingText}>Cargando usuarios...</Text>}
@@ -420,6 +564,14 @@ export default function AdminPanel({ onClose }) {
           pendingUsers.length > 0 ? pendingUsers.map(renderPendingUserItem) :
           <View style={dynamicStyles.emptyState}>
             <Text style={dynamicStyles.emptyStateText}>No hay usuarios pendientes.</Text>
+            <Text style={dynamicStyles.emptyStateSubtext}>Actualiza para comprobar nuevamente.</Text>
+          </View>
+        )}
+
+        {activeTab === 'all' && !loading && (
+          allUsers.length > 0 ? allUsers.map(renderAllUserItem) :
+          <View style={dynamicStyles.emptyState}>
+            <Text style={dynamicStyles.emptyStateText}>No hay usuarios registrados.</Text>
             <Text style={dynamicStyles.emptyStateSubtext}>Actualiza para comprobar nuevamente.</Text>
           </View>
         )}

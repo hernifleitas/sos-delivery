@@ -215,55 +215,73 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 export const iniciarUbicacionBackground = async () => {
   try {
-
     const { status } = await Location.requestForegroundPermissionsAsync();
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
 
     if (status === "granted" && bgStatus === "granted") {
       const isTaskRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      
+      // Si ya está registrado, detenerlo primero para aplicar nueva configuración
       if (isTaskRegistered) {
         await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
       }
 
-      if (!isTaskRegistered) {
-        // Configuración del servicio en segundo plano
-        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 30000,  // 30 segundos
-          distanceInterval: 5, // 5 metros
-          showsBackgroundLocationIndicator: true,
-          foregroundService: {
-            notificationTitle: "🚨 SOS Activo",
-            notificationBody: "Monitoreando tu ubicación",
-            notificationColor: "#e74c3c",
-            notificationChannelId: "sos-channel",
-            notificationIcon: "ic_notification",
-            notificationPriority: 2, // PRIORITY_HIGH
-          },
-          // Configuración específica para Android
-          android: {
-            notificationChannelId: "sos-channel",
-            notificationTitle: "🚨 SOS Activo",
-            notificationText: "Monitoreando tu ubicación",
-            notificationColor: "#e74c3c",
-            notificationIcon: "ic_notification",
-            notificationPriority: 2, // PRIORITY_HIGH
-            enableAccuracyNotification: true,
-            startForeground: true,
-            stopOnTerminate: false,
-            startOnBoot: true,
-            // Configuración adicional para mantener el servicio activo
-            foregroundService: {
-              notificationTitle: "🚨 SOS Activo",
-              notificationBody: "Monitoreando tu ubicación",
-              notificationColor: "#e74c3c"
-            }
-          }
-        });
-
-        console.log("Servicio de ubicación en segundo plano iniciado");
-        return true;
+      // Determinar el título de la notificación según el estado
+      const sosActivo = await AsyncStorage.getItem('sosActivo');
+      const tipoSOS = await AsyncStorage.getItem('tipoSOS');
+      const repartiendo = await AsyncStorage.getItem('repartiendoActivo');
+      
+      let notifTitle = "📍 Rider SOS";
+      let notifBody = "Monitoreando tu ubicación";
+      let notifColor = "#3498db";
+      
+      if (sosActivo === 'true' && (tipoSOS === 'robo' || tipoSOS === 'accidente')) {
+        notifTitle = `🚨 ALERTA ${tipoSOS.toUpperCase()}`;
+        notifBody = "Enviando ubicación en tiempo real";
+        notifColor = "#e74c3c";
+      } else if (repartiendo === 'true') {
+        notifTitle = "🏍️Repartiendo";
+        notifBody = "Tracking activo";
+        notifColor = "#27ae60";
       }
+
+      // Siempre iniciar el servicio (ya sea nuevo o reiniciado)
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 30000,  // 30 segundos
+        distanceInterval: 5, // 5 metros
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: notifTitle,
+          notificationBody: notifBody,
+          notificationColor: notifColor,
+          notificationChannelId: "sos-channel",
+          notificationIcon: "ic_notification",
+          notificationPriority: 2, // PRIORITY_HIGH
+        },
+        // Configuración específica para Android
+        android: {
+          notificationChannelId: "sos-channel",
+          notificationTitle: notifTitle,
+          notificationText: notifBody,
+          notificationColor: notifColor,
+          notificationIcon: "ic_notification",
+          notificationPriority: 2, // PRIORITY_HIGH
+          enableAccuracyNotification: true,
+          startForeground: true,
+          stopOnTerminate: false,
+          startOnBoot: true,
+          // Configuración adicional para mantener el servicio activo
+          foregroundService: {
+            notificationTitle: notifTitle,
+            notificationBody: notifBody,
+            notificationColor: notifColor
+          }
+        }
+      });
+
+      console.log("Servicio de ubicación en segundo plano iniciado");
+      return true;
     } else {
       await enviarNotificacion(
         "Permisos Requeridos",
